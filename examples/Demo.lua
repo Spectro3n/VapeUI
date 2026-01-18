@@ -4,7 +4,7 @@
 ]]
 
 -- Load the library
-local VapeUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/username/VapeUI/main/src/init.lua"))()
+local VapeUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Spectro3n/VapeUI/refs/heads/main/src/init.lua"))()
 
 -- Create window
 local Window = VapeUI:CreateWindow({

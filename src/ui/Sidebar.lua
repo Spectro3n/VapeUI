@@ -3,13 +3,13 @@
     Tab navigation container.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
-local Signal = require(script.Parent.Parent.core.Signal)
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
+local Signal = require("Core/Signal.lua")
 
-local TabButton = require(script.Parent.Parent.components.TabButton)
+local TabButton = require("Components/TabButton.lua")
 
 local Sidebar = {}
 Sidebar.__index = Sidebar
@@ -23,10 +23,9 @@ function Sidebar.new(parent, options)
     self.CurrentTab = nil
     self.Collapsed = false
     
-    -- Signals
     self.OnTabChanged = Signal.new()
     
-    -- Main frame
+    -- Main Frame
     self.Frame = Create.Frame({
         Name = "Sidebar",
         Size = UDim2.new(0, self.Width, 1, -Config.TopBar.Height),
@@ -36,7 +35,7 @@ function Sidebar.new(parent, options)
         Parent = parent,
     })
     
-    -- Divider line
+    -- Divider
     self.Divider = Create.Frame({
         Name = "Divider",
         Size = UDim2.new(0, 1, 1, -20),
@@ -46,7 +45,7 @@ function Sidebar.new(parent, options)
         Parent = self.Frame,
     })
     
-    -- Tab container
+    -- Tab Container
     self.TabContainer = Create.Scroll({
         Name = "TabContainer",
         Size = UDim2.new(1, 0, 1, -10),
@@ -72,13 +71,13 @@ function Sidebar:AddTab(name, icon)
     local tabButton = TabButton.new(self.TabContainer, {
         Name = name,
         Icon = icon,
-        Width = self.Width - 20, -- Account for padding
+        Width = self.Width - 20,
     })
     
     local tabData = {
         Name = name,
         Button = tabButton,
-        Page = nil, -- Will be set by PageManager
+        Page = nil,
     }
     
     tabButton.OnClick:Connect(function()
@@ -87,7 +86,6 @@ function Sidebar:AddTab(name, icon)
     
     table.insert(self.Tabs, tabData)
     
-    -- Select first tab automatically
     if #self.Tabs == 1 then
         self:SelectTab(tabData)
     end
@@ -98,12 +96,10 @@ end
 function Sidebar:SelectTab(tabData)
     if self.CurrentTab == tabData then return end
     
-    -- Deselect previous
     if self.CurrentTab then
         self.CurrentTab.Button:SetActive(false)
     end
     
-    -- Select new
     self.CurrentTab = tabData
     tabData.Button:SetActive(true)
     
@@ -122,10 +118,6 @@ function Sidebar:SetCollapsed(collapsed)
     for _, tab in ipairs(self.Tabs) do
         tab.Button:SetCollapsed(collapsed)
     end
-end
-
-function Sidebar:ToggleCollapse()
-    self:SetCollapsed(not self.Collapsed)
 end
 
 function Sidebar:UpdateTheme()

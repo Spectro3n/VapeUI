@@ -1,10 +1,10 @@
 --[[
     VapeUI Page Manager
-    Handles page creation and navigation with UIPageLayout.
+    Handles page creation and navigation.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Config = require(script.Parent.Parent.core.Config)
+local Create = require("Utils/Create.lua")
+local Config = require("Core/Config.lua")
 
 local PageManager = {}
 PageManager.__index = PageManager
@@ -16,7 +16,6 @@ function PageManager.new(container)
     self.Pages = {}
     self.CurrentPage = nil
     
-    -- UIPageLayout for smooth transitions
     self.PageLayout = Create.Instance("UIPageLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         EasingDirection = Enum.EasingDirection.Out,
@@ -55,7 +54,6 @@ function PageManager:CreatePage(name)
     
     self.Pages[name] = pageData
     
-    -- Select first page
     if not self.CurrentPage then
         self:JumpTo(name)
     end

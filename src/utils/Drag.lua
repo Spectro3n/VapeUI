@@ -3,8 +3,10 @@
     Smooth dragging with optional bounds.
 ]]
 
-local UserInputService = game:GetService("UserInputService")
-local Config = require(script.Parent.Parent.core.Config)
+local Services = require("Utils/Services.lua")
+local Config = require("Core/Config.lua")
+
+local UserInputService = Services.UserInputService
 
 local Drag = {}
 
@@ -18,7 +20,7 @@ function Drag.Enable(frame, dragArea, options)
     
     local smoothing = options.Smoothing or Config.Window.DragSmoothing
     local bounded = options.Bounded or false
-    local bounds = options.Bounds or nil -- {MinX, MinY, MaxX, MaxY}
+    local bounds = options.Bounds or nil
     
     dragArea.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or 
@@ -48,14 +50,12 @@ function Drag.Enable(frame, dragArea, options)
                 startPos.Y.Offset + delta.Y
             )
             
-            -- Apply bounds if specified
             if bounded and bounds then
                 local newX = math.clamp(targetPos.X.Offset, bounds.MinX, bounds.MaxX)
                 local newY = math.clamp(targetPos.Y.Offset, bounds.MinY, bounds.MaxY)
                 targetPos = UDim2.new(targetPos.X.Scale, newX, targetPos.Y.Scale, newY)
             end
             
-            -- Smooth dragging
             if smoothing > 0 then
                 frame.Position = frame.Position:Lerp(targetPos, 1 - smoothing)
             else

@@ -3,17 +3,20 @@
     Key binding selector.
 ]]
 
-local UserInputService = game:GetService("UserInputService")
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
-local Signal = require(script.Parent.Parent.core.Signal)
-local Card = require(script.Parent.Card)
+local Services = require("Utils/Services.lua")
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
+local Signal = require("Core/Signal.lua")
+local Card = require("Components/Card.lua")
+
+local UserInputService = Services:Get("UserInputService")
 
 local Keybind = {}
 Keybind.__index = Keybind
 
+-- Shortened key names for display
 local KEY_NAMES = {
     LeftShift = "LShift",
     RightShift = "RShift",
@@ -23,7 +26,28 @@ local KEY_NAMES = {
     RightAlt = "RAlt",
     CapsLock = "Caps",
     Backspace = "Back",
+    Return = "Enter",
     Unknown = "None",
+    Escape = "Esc",
+    Delete = "Del",
+    Insert = "Ins",
+    Home = "Home",
+    End = "End",
+    PageUp = "PgUp",
+    PageDown = "PgDn",
+    LeftBracket = "[",
+    RightBracket = "]",
+    Semicolon = ";",
+    Quote = "'",
+    BackSlash = "\\",
+    Comma = ",",
+    Period = ".",
+    Slash = "/",
+    BackQuote = "`",
+    Equals = "=",
+    Minus = "-",
+    Space = "Space",
+    Tab = "Tab",
 }
 
 function Keybind.new(parent, options)
@@ -35,9 +59,11 @@ function Keybind.new(parent, options)
     self.Default = options.Default or Enum.KeyCode.Unknown
     self.Callback = options.Callback or function() end
     self.ChangedCallback = options.ChangedCallback or function() end
+    self.IgnoreGameProcessed = options.IgnoreGameProcessed or false
     
     self.Value = self.Default
     self.Binding = false
+    self._connections = {}
     
     -- Signals
     self.OnChanged = Signal.new()
@@ -67,29 +93,54 @@ function Keybind.new(parent, options)
         Create.Corner(4),
     })
     
+    -- Hover effect
+    self.KeyButton.MouseEnter:Connect(function()
+        if not self.Binding then
+            Tween.Fast(self.KeyButton, {BackgroundColor3 = Theme:Get("CardActive")})
+        end
+    end)
+    
+    self.KeyButton.MouseLeave:Connect(function()
+        if not self.Binding then
+            Tween.Fast(self.KeyButton, {BackgroundColor3 = Theme:Get("CardHover")})
+        end
+    end)
+    
     -- Click to bind
     self.KeyButton.MouseButton1Click:Connect(function()
         self:_startBinding()
     end)
     
     -- Listen for key press
-    UserInputService.InputBegan:Connect(function(input, processed)
-        if processed then return end
+    table.insert(self._connections, UserInputService.InputBegan:Connect(function(input, processed)
+        if processed and not self.IgnoreGameProcessed then 
+            if self.Binding and input.UserInputType == Enum.UserInputType.Keyboard then
+                self:Set(input.KeyCode)
+            end
+            return 
+        end
         
         if self.Binding then
             if input.UserInputType == Enum.UserInputType.Keyboard then
                 self:Set(input.KeyCode)
+            elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+                -- Click outside cancels binding
+                task.wait()
+                if self.Binding then
+                    self:_cancelBinding()
+                end
             end
         elseif input.KeyCode == self.Value and self.Value ~= Enum.KeyCode.Unknown then
             self.Callback(self.Value)
             self.OnActivated:Fire(self.Value)
         end
-    end)
+    end))
     
     return self
 end
 
 function Keybind:_getKeyName(keyCode)
+    if keyCode == nil then return "None" end
     return KEY_NAMES[keyCode.Name] or keyCode.Name
 end
 
@@ -104,12 +155,16 @@ function Keybind:_startBinding()
     -- Timeout after 5 seconds
     task.delay(5, function()
         if self.Binding then
-            self.Binding = false
-            self.KeyButton.Text = self:_getKeyName(self.Value)
-            Tween.Fast(self.KeyButton, {BackgroundColor3 = Theme:Get("CardHover")})
-            Tween.Fast(self.KeyButton, {TextColor3 = Theme:Get("TextSecondary")})
+            self:_cancelBinding()
         end
     end)
+end
+
+function Keybind:_cancelBinding()
+    self.Binding = false
+    self.KeyButton.Text = self:_getKeyName(self.Value)
+    Tween.Fast(self.KeyButton, {BackgroundColor3 = Theme:Get("CardHover")})
+    Tween.Fast(self.KeyButton, {TextColor3 = Theme:Get("TextSecondary")})
 end
 
 function Keybind:Set(keyCode, skipCallback)
@@ -130,10 +185,30 @@ function Keybind:Get()
     return self.Value
 end
 
+function Keybind:Clear()
+    self:Set(Enum.KeyCode.Unknown, true)
+end
+
 function Keybind:UpdateTheme()
     self.Card:UpdateTheme()
-    self.KeyButton.BackgroundColor3 = Theme:Get("CardHover")
-    self.KeyButton.TextColor3 = Theme:Get("TextSecondary")
+    
+    if self.Binding then
+        self.KeyButton.BackgroundColor3 = Theme:Get("Accent")
+        self.KeyButton.TextColor3 = Color3.fromRGB(10, 10, 10)
+    else
+        self.KeyButton.BackgroundColor3 = Theme:Get("CardHover")
+        self.KeyButton.TextColor3 = Theme:Get("TextSecondary")
+    end
+end
+
+function Keybind:Destroy()
+    for _, connection in ipairs(self._connections) do
+        connection:Disconnect()
+    end
+    self._connections = {}
+    self.OnChanged:Destroy()
+    self.OnActivated:Destroy()
+    self.Card:Destroy()
 end
 
 return Keybind

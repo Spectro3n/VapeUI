@@ -3,9 +3,9 @@
     Container for page content.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
 
 local ContentArea = {}
 ContentArea.__index = ContentArea
@@ -16,7 +16,6 @@ function ContentArea.new(parent, options)
     options = options or {}
     self.SidebarWidth = options.SidebarWidth or Config.Sidebar.Width
     
-    -- Main frame
     self.Frame = Create.Frame({
         Name = "ContentArea",
         Size = UDim2.new(1, -self.SidebarWidth, 1, -Config.TopBar.Height),
@@ -27,7 +26,6 @@ function ContentArea.new(parent, options)
         Parent = parent,
     })
     
-    -- Page container (for UIPageLayout)
     self.PageContainer = Create.Frame({
         Name = "PageContainer",
         Size = UDim2.new(1, 0, 1, 0),

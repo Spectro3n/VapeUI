@@ -8,8 +8,6 @@
     
     VapeUI v2.0.0 | Professional UI Framework for Roblox
     Inspired by VapeV4 design language
-    
-    GitHub: https://github.com/username/VapeUI
 ]]
 
 local VapeUI = {}
@@ -19,46 +17,62 @@ VapeUI.Flags = {}
 VapeUI.Windows = {}
 
 -- ═══════════════════════════════════════════════════════════════════
--- SERVICES & MODULES
+-- LOAD MODULES
 -- ═══════════════════════════════════════════════════════════════════
 
-local CoreGui = game:GetService("CoreGui")
-local UserInputService = game:GetService("UserInputService")
-
 -- Core
-local Theme = require(script.core.Theme)
-local Config = require(script.core.Config)
-local Signal = require(script.core.Signal)
-
--- UI
-local Window = require(script.ui.Window)
-local TopBar = require(script.ui.TopBar)
-local Sidebar = require(script.ui.Sidebar)
-local ContentArea = require(script.ui.ContentArea)
-local Blur = require(script.ui.Blur)
-
--- Layout
-local PageManager = require(script.layout.PageManager)
-
--- Components
-local Toggle = require(script.components.Toggle)
-local Slider = require(script.components.Slider)
-local Button = require(script.components.Button)
-local Dropdown = require(script.components.Dropdown)
-local Keybind = require(script.components.Keybind)
-local TextInput = require(script.components.TextInput)
-local Label = require(script.components.Label)
-local Divider = require(script.components.Divider)
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Signal = require("Core/Signal.lua")
 
 -- Utils
-local Create = require(script.utils.Create)
-local Tween = require(script.utils.Tween)
+local Services = require("Utils/Services.lua")
+local Create = require("Utils/Create.lua")
+local Tween = require("Utils/Tween.lua")
+local Drag = require("Utils/Drag.lua")
+local Scale = require("Utils/Scale.lua")
 
--- Expose modules
+-- UI
+local Window = require("UI/Window.lua")
+local TopBar = require("UI/TopBar.lua")
+local Sidebar = require("UI/Sidebar.lua")
+local ContentArea = require("UI/ContentArea.lua")
+local Blur = require("UI/Blur.lua")
+
+-- Layout
+local PageManager = require("Layout/PageManager.lua")
+
+-- Components
+local Card = require("Components/Card.lua")
+local Toggle = require("Components/Toggle.lua")
+local Slider = require("Components/Slider.lua")
+local Button = require("Components/Button.lua")
+local Dropdown = require("Components/Dropdown.lua")
+local Keybind = require("Components/Keybind.lua")
+local TextInput = require("Components/TextInput.lua")
+local Label = require("Components/Label.lua")
+local Divider = require("Components/Divider.lua")
+local ColorPicker = require("Components/ColorPicker.lua")
+local TabButton = require("Components/TabButton.lua")
+local Notification = require("Components/Notification.lua")
+local Tooltip = require("Components/Tooltip.lua")
+local Paragraph = require("Components/Paragraph.lua")
+
+-- Services
+local CoreGui = Services:Get("CoreGui")
+local UserInputService = Services:Get("UserInputService")
+
+-- ═══════════════════════════════════════════════════════════════════
+-- EXPOSE MODULES
+-- ═══════════════════════════════════════════════════════════════════
+
 VapeUI.Theme = Theme
 VapeUI.Config = Config
 VapeUI.Signal = Signal
-VapeUI.Blur = Blur
+VapeUI.Services = Services
+VapeUI.Create = Create
+VapeUI.Tween = Tween
+VapeUI.Scale = Scale
 
 -- ═══════════════════════════════════════════════════════════════════
 -- WINDOW CREATION
@@ -75,14 +89,16 @@ function VapeUI:CreateWindow(options)
         Visible = true,
         Tabs = {},
         Flags = VapeUI.Flags,
+        _connections = {},
     }
     
     -- Set theme
     Theme:Set(windowInstance.ThemeName)
     
     -- Clean old UI
-    if CoreGui:FindFirstChild("VapeUI") then
-        CoreGui:FindFirstChild("VapeUI"):Destroy()
+    local oldUI = CoreGui:FindFirstChild("VapeUI")
+    if oldUI then
+        oldUI:Destroy()
     end
     
     -- ScreenGui
@@ -90,6 +106,7 @@ function VapeUI:CreateWindow(options)
         Name = "VapeUI",
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
         ResetOnSpawn = false,
+        IgnoreGuiInset = false,
         Parent = CoreGui,
     })
     
@@ -137,12 +154,12 @@ function VapeUI:CreateWindow(options)
     end)
     
     -- Toggle keybind
-    UserInputService.InputBegan:Connect(function(input, processed)
+    table.insert(windowInstance._connections, UserInputService.InputBegan:Connect(function(input, processed)
         if processed then return end
         if input.KeyCode == windowInstance.ToggleKey then
             windowInstance:Toggle()
         end
-    end)
+    end))
     
     -- ═══════════════════════════════════════════════════════════════════
     -- TAB CREATION
@@ -233,9 +250,20 @@ function VapeUI:CreateWindow(options)
             return input
         end
         
+        function tabInstance:CreateColorPicker(opts)
+            opts = opts or {}
+            local colorPicker = ColorPicker.new(page.Frame, opts)
+            if opts.Flag then VapeUI.Flags[opts.Flag] = colorPicker.Value end
+            colorPicker.OnChanged:Connect(function(value)
+                if opts.Flag then VapeUI.Flags[opts.Flag] = value end
+            end)
+            table.insert(self.Elements, colorPicker)
+            return colorPicker
+        end
+        
         function tabInstance:CreateLabel(opts)
             if type(opts) == "string" then
-                opts = {Text = opts}
+                opts = { Text = opts }
             end
             opts = opts or {}
             local label = Label.new(page.Frame, opts)
@@ -243,9 +271,16 @@ function VapeUI:CreateWindow(options)
             return label
         end
         
+        function tabInstance:CreateParagraph(opts)
+            opts = opts or {}
+            local paragraph = Paragraph.new(page.Frame, opts)
+            table.insert(self.Elements, paragraph)
+            return paragraph
+        end
+        
         function tabInstance:CreateDivider(opts)
             if type(opts) == "string" then
-                opts = {Text = opts}
+                opts = { Text = opts }
             end
             opts = opts or {}
             local divider = Divider.new(page.Frame, opts)
@@ -255,6 +290,14 @@ function VapeUI:CreateWindow(options)
         
         table.insert(self.Tabs, tabInstance)
         return tabInstance
+    end
+    
+    -- ═══════════════════════════════════════════════════════════════════
+    -- NOTIFICATION
+    -- ═══════════════════════════════════════════════════════════════════
+    
+    function windowInstance:Notify(options)
+        return Notification.new(self.ScreenGui, options)
     end
     
     -- ═══════════════════════════════════════════════════════════════════
@@ -281,6 +324,7 @@ function VapeUI:CreateWindow(options)
         self.Visible = false
         self.Window:SetVisible(false)
         self.BlurController:Disable()
+        Tooltip.Hide()
     end
     
     function windowInstance:SetTheme(themeName)
@@ -295,6 +339,7 @@ function VapeUI:CreateWindow(options)
         self.TopBar:UpdateTheme()
         self.Sidebar:UpdateTheme()
         self.ContentArea:UpdateTheme()
+        Tooltip.UpdateTheme()
         
         for _, tab in ipairs(self.Tabs) do
             for _, element in ipairs(tab.Elements) do
@@ -306,12 +351,61 @@ function VapeUI:CreateWindow(options)
     end
     
     function windowInstance:Destroy()
+        -- Disconnect all connections
+        for _, connection in ipairs(self._connections) do
+            connection:Disconnect()
+        end
+        self._connections = {}
+        
+        -- Destroy components
+        for _, tab in ipairs(self.Tabs) do
+            for _, element in ipairs(tab.Elements) do
+                if element.Destroy then
+                    element:Destroy()
+                end
+            end
+        end
+        
         self.BlurController:Destroy()
         self.ScreenGui:Destroy()
+        
+        -- Remove from windows list
+        for i, win in ipairs(VapeUI.Windows) do
+            if win == self then
+                table.remove(VapeUI.Windows, i)
+                break
+            end
+        end
     end
     
     table.insert(VapeUI.Windows, windowInstance)
     return windowInstance
 end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- GLOBAL METHODS
+-- ═══════════════════════════════════════════════════════════════════
+
+function VapeUI:GetFlag(flag)
+    return self.Flags[flag]
+end
+
+function VapeUI:SetFlag(flag, value)
+    self.Flags[flag] = value
+end
+
+function VapeUI:DestroyAll()
+    for _, window in ipairs(self.Windows) do
+        window:Destroy()
+    end
+    self.Windows = {}
+    self.Flags = {}
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- RETURN
+-- ═══════════════════════════════════════════════════════════════════
+
+print("✅ VapeUI v" .. VapeUI.Version .. " loaded successfully!")
 
 return VapeUI

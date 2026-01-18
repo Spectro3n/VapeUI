@@ -1,14 +1,13 @@
 --[[
     VapeUI Window
-    Main container for the entire UI.
+    Main container for the UI.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Drag = require(script.Parent.Parent.utils.Drag)
-local Tween = require(script.Parent.Parent.utils.Tween)
-local Signal = require(script.Parent.Parent.core.Signal)
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
+local Signal = require("Core/Signal.lua")
 
 local Window = {}
 Window.__index = Window
@@ -20,16 +19,11 @@ function Window.new(screenGui, options)
     self.Title = options.Title or "VapeUI"
     self.Size = options.Size or Config.Window.DefaultSize
     
-    -- Signals
     self.OnClose = Signal.new()
     self.OnMinimize = Signal.new()
-    self.OnMaximize = Signal.new()
-    
-    -- State
     self.Visible = true
-    self.Minimized = false
     
-    -- Create main frame
+    -- Main Frame
     self.Frame = Create.Frame({
         Name = "VapeUI_Window",
         Size = UDim2.fromOffset(self.Size.X, self.Size.Y),
@@ -59,7 +53,7 @@ function Window.new(screenGui, options)
         Parent = self.Frame,
     })
     
-    -- Container for content (sidebar + content area)
+    -- Container
     self.Container = Create.Frame({
         Name = "Container",
         Size = UDim2.new(1, 0, 1, 0),

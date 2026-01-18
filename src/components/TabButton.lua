@@ -1,13 +1,13 @@
 --[[
     VapeUI Tab Button
-    Sidebar navigation button with active indicator.
+    Sidebar navigation button.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
-local Signal = require(script.Parent.Parent.core.Signal)
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
+local Signal = require("Core/Signal.lua")
 
 local TabButton = {}
 TabButton.__index = TabButton
@@ -22,10 +22,9 @@ function TabButton.new(parent, options)
     self.Collapsed = false
     self.Width = options.Width or Config.Sidebar.Width - 20
     
-    -- Signals
     self.OnClick = Signal.new()
     
-    -- Main button
+    -- Main Button
     self.Frame = Create.Button({
         Name = "Tab_" .. self.Name,
         Size = UDim2.new(1, 0, 0, Config.Sidebar.TabHeight),
@@ -39,7 +38,7 @@ function TabButton.new(parent, options)
         Create.Corner(8),
     })
     
-    -- Active indicator (left line)
+    -- Active Indicator
     self.Indicator = Create.Frame({
         Name = "Indicator",
         Size = UDim2.new(0, Config.Sidebar.IndicatorWidth, 0, Config.Sidebar.TabHeight - Config.Sidebar.IndicatorPadding * 2),
@@ -53,7 +52,7 @@ function TabButton.new(parent, options)
         Create.Corner(2),
     })
     
-    -- Icon (optional)
+    -- Icon
     if self.Icon then
         self.IconLabel = Create.Image({
             Name = "Icon",
@@ -67,7 +66,7 @@ function TabButton.new(parent, options)
         })
     end
     
-    -- Text label
+    -- Label
     self.Label = Create.Text({
         Name = "Label",
         Size = UDim2.new(1, -(self.Icon and 45 or 25), 1, 0),
@@ -82,17 +81,17 @@ function TabButton.new(parent, options)
         Parent = self.Frame,
     })
     
-    -- Hover effect
+    -- Hover
     self.Frame.MouseEnter:Connect(function()
         if not self.Active then
-            Tween.Fast(self.Frame, {BackgroundTransparency = 0.85})
-            Tween.Fast(self.Frame, {BackgroundColor3 = Theme:Get("CardHover")})
+            Tween.Fast(self.Frame, { BackgroundTransparency = 0.85 })
+            Tween.Fast(self.Frame, { BackgroundColor3 = Theme:Get("CardHover") })
         end
     end)
     
     self.Frame.MouseLeave:Connect(function()
         if not self.Active then
-            Tween.Fast(self.Frame, {BackgroundTransparency = 1})
+            Tween.Fast(self.Frame, { BackgroundTransparency = 1 })
         end
     end)
     
@@ -108,18 +107,18 @@ function TabButton:SetActive(active)
     self.Active = active
     
     if active then
-        Tween.Fast(self.Frame, {BackgroundTransparency = 0.9, BackgroundColor3 = Theme:Get("Card")})
-        Tween.Fast(self.Indicator, {BackgroundTransparency = 0})
-        Tween.Fast(self.Label, {TextColor3 = Theme:Get("TextPrimary")})
+        Tween.Fast(self.Frame, { BackgroundTransparency = 0.9, BackgroundColor3 = Theme:Get("Card") })
+        Tween.Fast(self.Indicator, { BackgroundTransparency = 0 })
+        Tween.Fast(self.Label, { TextColor3 = Theme:Get("TextPrimary") })
         if self.IconLabel then
-            Tween.Fast(self.IconLabel, {ImageColor3 = Theme:Get("Accent")})
+            Tween.Fast(self.IconLabel, { ImageColor3 = Theme:Get("Accent") })
         end
     else
-        Tween.Fast(self.Frame, {BackgroundTransparency = 1})
-        Tween.Fast(self.Indicator, {BackgroundTransparency = 1})
-        Tween.Fast(self.Label, {TextColor3 = Theme:Get("TextSecondary")})
+        Tween.Fast(self.Frame, { BackgroundTransparency = 1 })
+        Tween.Fast(self.Indicator, { BackgroundTransparency = 1 })
+        Tween.Fast(self.Label, { TextColor3 = Theme:Get("TextSecondary") })
         if self.IconLabel then
-            Tween.Fast(self.IconLabel, {ImageColor3 = Theme:Get("TextSecondary")})
+            Tween.Fast(self.IconLabel, { ImageColor3 = Theme:Get("TextSecondary") })
         end
     end
 end

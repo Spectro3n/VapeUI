@@ -1,9 +1,10 @@
 --[[
     VapeUI Theme System
-    All colors are centralized here. NO hardcoded colors anywhere else.
+    Centralized color management - NO hardcoded colors anywhere else.
 ]]
 
 local Theme = {}
+Theme.__index = Theme
 
 -- ═══════════════════════════════════════════════════════════════════
 -- COLOR PALETTES
@@ -11,39 +12,39 @@ local Theme = {}
 
 Theme.Palettes = {
     Dark = {
-        -- Base Colors
+        -- Base
         Window = Color3.fromRGB(18, 18, 18),
         Sidebar = Color3.fromRGB(21, 21, 21),
         TopBar = Color3.fromRGB(24, 24, 24),
         Content = Color3.fromRGB(18, 18, 18),
         
-        -- Card Colors
+        -- Cards
         Card = Color3.fromRGB(26, 26, 26),
         CardHover = Color3.fromRGB(32, 32, 32),
         CardActive = Color3.fromRGB(36, 36, 36),
         
-        -- Border & Divider
+        -- Borders
         Border = Color3.fromRGB(38, 38, 38),
         Divider = Color3.fromRGB(35, 35, 35),
         
-        -- Text Colors
+        -- Text
         TextPrimary = Color3.fromRGB(225, 225, 225),
         TextSecondary = Color3.fromRGB(160, 160, 160),
         TextMuted = Color3.fromRGB(100, 100, 100),
         TextDisabled = Color3.fromRGB(60, 60, 60),
         
-        -- Accent Colors
+        -- Accent
         Accent = Color3.fromRGB(0, 255, 140),
         AccentHover = Color3.fromRGB(0, 230, 125),
         AccentDark = Color3.fromRGB(0, 180, 100),
         
-        -- Component States
+        -- Components
         ToggleOff = Color3.fromRGB(45, 45, 45),
         ToggleOn = Color3.fromRGB(0, 255, 140),
         SliderBackground = Color3.fromRGB(40, 40, 40),
         SliderFill = Color3.fromRGB(0, 255, 140),
         
-        -- Feedback Colors
+        -- Feedback
         Success = Color3.fromRGB(0, 255, 140),
         Warning = Color3.fromRGB(255, 200, 60),
         Error = Color3.fromRGB(255, 80, 80),
@@ -111,6 +112,35 @@ Theme.Palettes = {
         Shadow = Color3.fromRGB(0, 0, 0),
         ShadowTransparency = 0.5,
     },
+    
+    Purple = {
+        Window = Color3.fromRGB(16, 14, 22),
+        Sidebar = Color3.fromRGB(20, 17, 28),
+        TopBar = Color3.fromRGB(24, 20, 34),
+        Content = Color3.fromRGB(16, 14, 22),
+        Card = Color3.fromRGB(28, 24, 38),
+        CardHover = Color3.fromRGB(36, 30, 48),
+        CardActive = Color3.fromRGB(42, 36, 56),
+        Border = Color3.fromRGB(48, 40, 65),
+        Divider = Color3.fromRGB(40, 34, 54),
+        TextPrimary = Color3.fromRGB(235, 230, 245),
+        TextSecondary = Color3.fromRGB(170, 160, 190),
+        TextMuted = Color3.fromRGB(110, 100, 130),
+        TextDisabled = Color3.fromRGB(65, 58, 80),
+        Accent = Color3.fromRGB(160, 100, 255),
+        AccentHover = Color3.fromRGB(140, 80, 235),
+        AccentDark = Color3.fromRGB(120, 60, 200),
+        ToggleOff = Color3.fromRGB(45, 38, 60),
+        ToggleOn = Color3.fromRGB(160, 100, 255),
+        SliderBackground = Color3.fromRGB(40, 34, 55),
+        SliderFill = Color3.fromRGB(160, 100, 255),
+        Success = Color3.fromRGB(100, 230, 160),
+        Warning = Color3.fromRGB(255, 190, 80),
+        Error = Color3.fromRGB(255, 85, 100),
+        Info = Color3.fromRGB(120, 180, 255),
+        Shadow = Color3.fromRGB(0, 0, 0),
+        ShadowTransparency = 0.5,
+    },
 }
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -118,14 +148,20 @@ Theme.Palettes = {
 -- ═══════════════════════════════════════════════════════════════════
 
 Theme.Current = Theme.Palettes.Dark
+Theme.CurrentName = "Dark"
 
 -- ═══════════════════════════════════════════════════════════════════
 -- METHODS
 -- ═══════════════════════════════════════════════════════════════════
 
 function Theme:Set(paletteName)
-    if self.Palettes[paletteName] then
+    if type(paletteName) == "string" and self.Palettes[paletteName] then
         self.Current = self.Palettes[paletteName]
+        self.CurrentName = paletteName
+        return true
+    elseif type(paletteName) == "table" then
+        self.Current = paletteName
+        self.CurrentName = "Custom"
         return true
     end
     return false
@@ -135,12 +171,20 @@ function Theme:Get(key)
     return self.Current[key]
 end
 
+function Theme:GetColor(colorName)
+    return self.Current[colorName] or Color3.fromRGB(255, 0, 255) -- Magenta fallback
+end
+
 function Theme:AddPalette(name, palette)
     self.Palettes[name] = palette
 end
 
-function Theme:GetColor(colorName)
-    return self.Current[colorName] or Color3.fromRGB(255, 0, 255) -- Magenta fallback
+function Theme:GetPaletteNames()
+    local names = {}
+    for name in pairs(self.Palettes) do
+        table.insert(names, name)
+    end
+    return names
 end
 
 return Theme

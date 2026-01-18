@@ -1,14 +1,14 @@
 --[[
     VapeUI Slider
-    Numeric value selector with drag interaction.
+    Numeric value selector.
 ]]
 
-local UserInputService = game:GetService("UserInputService")
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
-local Signal = require(script.Parent.Parent.core.Signal)
+local Services = require("Utils/Services.lua")
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
+local Signal = require("Core/Signal.lua")
 
 local Slider = {}
 Slider.__index = Slider
@@ -18,7 +18,7 @@ function Slider.new(parent, options)
     
     options = options or {}
     self.Name = options.Name or "Slider"
-    self.Flag = options.Flag or self.Name
+    self.Flag = options.Flag
     self.Min = options.Min or 0
     self.Max = options.Max or 100
     self.Default = options.Default or self.Min
@@ -27,10 +27,9 @@ function Slider.new(parent, options)
     self.Callback = options.Callback or function() end
     self.Value = self.Default
     
-    -- Signals
     self.OnChanged = Signal.new()
     
-    -- Main frame
+    -- Main Frame
     self.Frame = Create.Frame({
         Name = "Slider_" .. self.Name,
         Size = UDim2.new(1, 0, 0, 50),
@@ -39,10 +38,7 @@ function Slider.new(parent, options)
         Parent = parent,
     }, {
         Create.Corner(Config.Card.CornerRadius),
-        Create.Stroke({
-            Color = Theme:Get("Border"),
-            Transparency = 0.6,
-        }),
+        Create.Stroke({ Color = Theme:Get("Border"), Transparency = 0.6 }),
     })
     
     -- Label
@@ -59,7 +55,7 @@ function Slider.new(parent, options)
         Parent = self.Frame,
     })
     
-    -- Value display
+    -- Value Display
     self.ValueLabel = Create.Text({
         Name = "Value",
         Size = UDim2.new(0.5, -Config.Card.Padding, 0, 25),
@@ -73,7 +69,7 @@ function Slider.new(parent, options)
         Parent = self.Frame,
     })
     
-    -- Slider bar container
+    -- Slider Bar
     self.SliderContainer = Create.Frame({
         Name = "SliderContainer",
         Size = UDim2.new(1, -Config.Card.Padding * 2, 0, Config.Slider.Height),
@@ -85,7 +81,7 @@ function Slider.new(parent, options)
         Create.Corner(Config.Slider.CornerRadius),
     })
     
-    -- Fill bar
+    -- Fill
     self.Fill = Create.Frame({
         Name = "Fill",
         Size = UDim2.new(0, 0, 1, 0),
@@ -110,10 +106,7 @@ function Slider.new(parent, options)
         Create.Corner(UDim.new(1, 0)),
     })
     
-    -- Drag logic
     self:_setupDrag()
-    
-    -- Set initial value
     self:Set(self.Default, true)
     
     return self
@@ -144,14 +137,14 @@ function Slider:_setupDrag()
         end
     end)
     
-    UserInputService.InputChanged:Connect(function(input)
+    Services.UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
                          input.UserInputType == Enum.UserInputType.Touch) then
             update(input)
         end
     end)
     
-    UserInputService.InputEnded:Connect(function(input)
+    Services.UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or 
            input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
@@ -168,8 +161,8 @@ function Slider:Set(value, skipCallback)
     
     local percent = (value - self.Min) / (self.Max - self.Min)
     
-    Tween.Fast(self.Fill, {Size = UDim2.new(percent, 0, 1, 0)})
-    Tween.Fast(self.Knob, {Position = UDim2.new(percent, 0, 0.5, 0)})
+    Tween.Fast(self.Fill, { Size = UDim2.new(percent, 0, 1, 0) })
+    Tween.Fast(self.Knob, { Position = UDim2.new(percent, 0, 0.5, 0) })
     
     if not skipCallback then
         self.Callback(value)

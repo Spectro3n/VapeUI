@@ -3,10 +3,10 @@
     Base container for all interactive components.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
 
 local Card = {}
 Card.__index = Card
@@ -75,10 +75,24 @@ function Card:SetLabel(text)
     self.Label.Text = text
 end
 
+function Card:SetHeight(height)
+    self.Height = height
+    self.Frame.Size = UDim2.new(1, 0, 0, height)
+end
+
 function Card:UpdateTheme()
     self.Frame.BackgroundColor3 = Theme:Get("Card")
-    self.Frame.UIStroke.Color = Theme:Get("Border")
+    
+    local stroke = self.Frame:FindFirstChildOfClass("UIStroke")
+    if stroke then
+        stroke.Color = Theme:Get("Border")
+    end
+    
     self.Label.TextColor3 = Theme:Get("TextPrimary")
+end
+
+function Card:Destroy()
+    self.Frame:Destroy()
 end
 
 return Card

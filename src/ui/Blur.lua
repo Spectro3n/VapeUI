@@ -1,11 +1,11 @@
 --[[
     VapeUI Blur Controller
-    Manages background blur effect.
+    Background blur effect management.
 ]]
 
-local Lighting = game:GetService("Lighting")
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
+local Services = require("Utils/Services.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
 
 local Blur = {}
 Blur.__index = Blur
@@ -20,11 +20,10 @@ function Blur.new()
     self.Enabled = false
     self.Size = Config.Misc.BlurSize
     
-    -- Create blur effect
     self.Effect = Instance.new("BlurEffect")
     self.Effect.Name = "VapeUI_Blur"
     self.Effect.Size = 0
-    self.Effect.Parent = Lighting
+    self.Effect.Parent = Services.Lighting
     
     instance = self
     return self
@@ -33,12 +32,12 @@ end
 function Blur:Enable(size)
     self.Enabled = true
     self.Size = size or Config.Misc.BlurSize
-    Tween.Slow(self.Effect, {Size = self.Size})
+    Tween.Slow(self.Effect, { Size = self.Size })
 end
 
 function Blur:Disable()
     self.Enabled = false
-    Tween.Slow(self.Effect, {Size = 0})
+    Tween.Slow(self.Effect, { Size = 0 })
 end
 
 function Blur:Toggle()
@@ -52,12 +51,14 @@ end
 function Blur:SetSize(size)
     self.Size = size
     if self.Enabled then
-        Tween.Normal(self.Effect, {Size = size})
+        Tween.Normal(self.Effect, { Size = size })
     end
 end
 
 function Blur:Destroy()
-    self.Effect:Destroy()
+    if self.Effect then
+        self.Effect:Destroy()
+    end
     instance = nil
 end
 

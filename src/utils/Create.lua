@@ -8,19 +8,16 @@ local Create = {}
 function Create.Instance(className, properties, children)
     local instance = Instance.new(className)
     
-    -- Apply properties
     for property, value in pairs(properties or {}) do
         if property ~= "Parent" then
             instance[property] = value
         end
     end
     
-    -- Apply children
     for _, child in ipairs(children or {}) do
         child.Parent = instance
     end
     
-    -- Set parent last
     if properties and properties.Parent then
         instance.Parent = properties.Parent
     end
@@ -28,7 +25,10 @@ function Create.Instance(className, properties, children)
     return instance
 end
 
--- Shorthand creators
+-- ═══════════════════════════════════════════════════════════════════
+-- SHORTHAND CREATORS
+-- ═══════════════════════════════════════════════════════════════════
+
 function Create.Frame(props, children)
     return Create.Instance("Frame", props, children)
 end
@@ -59,7 +59,7 @@ end
 
 function Create.Corner(radius)
     return Create.Instance("UICorner", {
-        CornerRadius = typeof(radius) == "number" and UDim.new(0, radius) or radius
+        CornerRadius = typeof(radius) == "number" and UDim.new(0, radius) or radius or UDim.new(0, 6)
     })
 end
 
@@ -96,6 +96,16 @@ function Create.Grid(props)
         default[k] = v
     end
     return Create.Instance("UIGridLayout", default)
+end
+
+function Create.Gradient(props)
+    return Create.Instance("UIGradient", props)
+end
+
+function Create.AspectRatio(ratio)
+    return Create.Instance("UIAspectRatioConstraint", {
+        AspectRatio = ratio or 1
+    })
 end
 
 return Create

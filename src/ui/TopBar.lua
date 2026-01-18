@@ -3,12 +3,12 @@
     Title and window controls.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
-local Drag = require(script.Parent.Parent.utils.Drag)
-local Signal = require(script.Parent.Parent.core.Signal)
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
+local Drag = require("Utils/Drag.lua")
+local Signal = require("Core/Signal.lua")
 
 local TopBar = {}
 TopBar.__index = TopBar
@@ -21,11 +21,10 @@ function TopBar.new(parent, options)
     self.ShowClose = options.ShowClose ~= false
     self.ShowMinimize = options.ShowMinimize ~= false
     
-    -- Signals
     self.OnClose = Signal.new()
     self.OnMinimize = Signal.new()
     
-    -- Main frame
+    -- Main Frame
     self.Frame = Create.Frame({
         Name = "TopBar",
         Size = UDim2.new(1, 0, 0, Config.TopBar.Height),
@@ -34,8 +33,6 @@ function TopBar.new(parent, options)
         Parent = parent,
     }, {
         Create.Corner(Config.Window.CornerRadius),
-        
-        -- Bottom cover to hide bottom corners
         Create.Frame({
             Name = "BottomCover",
             Size = UDim2.new(1, 0, 0, Config.Window.CornerRadius),
@@ -59,7 +56,7 @@ function TopBar.new(parent, options)
         Parent = self.Frame,
     })
     
-    -- Buttons container
+    -- Buttons Container
     self.ButtonsContainer = Create.Frame({
         Name = "Buttons",
         Size = UDim2.new(0, 80, 1, 0),
@@ -75,21 +72,21 @@ function TopBar.new(parent, options)
         }),
     })
     
-    -- Minimize button
+    -- Minimize Button
     if self.ShowMinimize then
         self.MinimizeButton = self:_createButton("−", function()
             self.OnMinimize:Fire()
         end)
     end
     
-    -- Close button
+    -- Close Button
     if self.ShowClose then
         self.CloseButton = self:_createButton("×", function()
             self.OnClose:Fire()
         end, true)
     end
     
-    -- Enable dragging on topbar
+    -- Enable dragging
     if options.DragTarget then
         Drag.Enable(options.DragTarget, self.Frame)
     end
@@ -117,11 +114,11 @@ function TopBar:_createButton(text, callback, isClose)
     local hoverTextColor = isClose and Color3.new(1, 1, 1) or Theme:Get("TextPrimary")
     
     button.MouseEnter:Connect(function()
-        Tween.Fast(button, {BackgroundColor3 = hoverColor, TextColor3 = hoverTextColor})
+        Tween.Fast(button, { BackgroundColor3 = hoverColor, TextColor3 = hoverTextColor })
     end)
     
     button.MouseLeave:Connect(function()
-        Tween.Fast(button, {BackgroundColor3 = normalColor, TextColor3 = Theme:Get("TextSecondary")})
+        Tween.Fast(button, { BackgroundColor3 = normalColor, TextColor3 = Theme:Get("TextSecondary") })
     end)
     
     button.MouseButton1Click:Connect(callback)

@@ -3,13 +3,15 @@
     Centralized animation system.
 ]]
 
-local TweenService = game:GetService("TweenService")
-local Config = require(script.Parent.Parent.core.Config)
+local Services = require("Utils/Services.lua")
+local Config = require("Core/Config.lua")
+
+local TweenService = Services.TweenService
 
 local Tween = {}
 
 -- ═══════════════════════════════════════════════════════════════════
--- CORE TWEEN FUNCTION
+-- CORE TWEEN
 -- ═══════════════════════════════════════════════════════════════════
 
 function Tween.new(instance, properties, duration, easingStyle, easingDirection)
@@ -56,11 +58,11 @@ end
 
 function Tween.FadeIn(instance, duration)
     instance.BackgroundTransparency = 1
-    return Tween.new(instance, {BackgroundTransparency = 0}, duration or Config.Animation.Normal)
+    return Tween.new(instance, { BackgroundTransparency = 0 }, duration)
 end
 
 function Tween.FadeOut(instance, duration)
-    return Tween.new(instance, {BackgroundTransparency = 1}, duration or Config.Animation.Normal)
+    return Tween.new(instance, { BackgroundTransparency = 1 }, duration)
 end
 
 function Tween.SlideIn(instance, fromDirection, duration)
@@ -73,12 +75,7 @@ function Tween.SlideIn(instance, fromDirection, duration)
     
     local targetPos = instance.Position
     instance.Position = directions[fromDirection] or directions.Left
-    return Tween.new(instance, {Position = targetPos}, duration or Config.Animation.Slow)
-end
-
-function Tween.Pop(instance, duration)
-    instance.Size = UDim2.new(0, 0, 0, 0)
-    return Tween.Spring(instance, {Size = instance:GetAttribute("OriginalSize") or UDim2.new(1, 0, 1, 0)})
+    return Tween.new(instance, { Position = targetPos }, duration or Config.Animation.Slow)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -87,21 +84,21 @@ end
 
 function Tween.HoverColor(instance, normalColor, hoverColor)
     instance.MouseEnter:Connect(function()
-        Tween.Fast(instance, {BackgroundColor3 = hoverColor})
+        Tween.Fast(instance, { BackgroundColor3 = hoverColor })
     end)
     
     instance.MouseLeave:Connect(function()
-        Tween.Fast(instance, {BackgroundColor3 = normalColor})
+        Tween.Fast(instance, { BackgroundColor3 = normalColor })
     end)
 end
 
 function Tween.HoverTransparency(instance, normalTrans, hoverTrans)
     instance.MouseEnter:Connect(function()
-        Tween.Fast(instance, {BackgroundTransparency = hoverTrans})
+        Tween.Fast(instance, { BackgroundTransparency = hoverTrans })
     end)
     
     instance.MouseLeave:Connect(function()
-        Tween.Fast(instance, {BackgroundTransparency = normalTrans})
+        Tween.Fast(instance, { BackgroundTransparency = normalTrans })
     end)
 end
 

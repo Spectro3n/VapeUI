@@ -1,13 +1,13 @@
 --[[
     VapeUI Dropdown
-    Selection menu with options.
+    Selection menu.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
-local Signal = require(script.Parent.Parent.core.Signal)
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
+local Signal = require("Core/Signal.lua")
 
 local Dropdown = {}
 Dropdown.__index = Dropdown
@@ -17,7 +17,7 @@ function Dropdown.new(parent, options)
     
     options = options or {}
     self.Name = options.Name or "Dropdown"
-    self.Flag = options.Flag or self.Name
+    self.Flag = options.Flag
     self.Options = options.Options or {}
     self.Default = options.Default
     self.MultiSelect = options.MultiSelect or false
@@ -26,10 +26,9 @@ function Dropdown.new(parent, options)
     self.Value = self.MultiSelect and {} or nil
     self.Open = false
     
-    -- Signals
     self.OnChanged = Signal.new()
     
-    -- Main frame
+    -- Main Frame
     self.Frame = Create.Frame({
         Name = "Dropdown_" .. self.Name,
         Size = UDim2.new(1, 0, 0, Config.Card.Height),
@@ -39,13 +38,10 @@ function Dropdown.new(parent, options)
         Parent = parent,
     }, {
         Create.Corner(Config.Card.CornerRadius),
-        Create.Stroke({
-            Color = Theme:Get("Border"),
-            Transparency = 0.6,
-        }),
+        Create.Stroke({ Color = Theme:Get("Border"), Transparency = 0.6 }),
     })
     
-    -- Header (clickable area)
+    -- Header
     self.Header = Create.Button({
         Name = "Header",
         Size = UDim2.new(1, 0, 0, Config.Card.Height),
@@ -70,7 +66,7 @@ function Dropdown.new(parent, options)
         Parent = self.Header,
     })
     
-    -- Selected value display
+    -- Selected Display
     self.SelectedLabel = Create.Text({
         Name = "Selected",
         Size = UDim2.new(0.45, -30, 1, 0),
@@ -85,7 +81,7 @@ function Dropdown.new(parent, options)
         Parent = self.Header,
     })
     
-    -- Arrow indicator
+    -- Arrow
     self.Arrow = Create.Text({
         Name = "Arrow",
         Size = UDim2.new(0, 20, 1, 0),
@@ -98,7 +94,7 @@ function Dropdown.new(parent, options)
         Parent = self.Header,
     })
     
-    -- Options container
+    -- Options Container
     self.OptionsContainer = Create.Scroll({
         Name = "OptionsContainer",
         Size = UDim2.new(1, 0, 0, 0),
@@ -112,9 +108,7 @@ function Dropdown.new(parent, options)
         Visible = false,
         Parent = self.Frame,
     }, {
-        Create.List({
-            Padding = UDim.new(0, 2),
-        }),
+        Create.List({ Padding = UDim.new(0, 2) }),
         Create.Padding(4, 8, 4, 8),
     })
     
@@ -141,14 +135,12 @@ function Dropdown.new(parent, options)
 end
 
 function Dropdown:_populateOptions()
-    -- Clear existing
     for _, child in ipairs(self.OptionsContainer:GetChildren()) do
         if child:IsA("TextButton") then
             child:Destroy()
         end
     end
     
-    -- Create option buttons
     for _, option in ipairs(self.Options) do
         local optBtn = Create.Button({
             Name = "Option_" .. option,
@@ -166,13 +158,13 @@ function Dropdown:_populateOptions()
         
         optBtn.MouseEnter:Connect(function()
             if not self:_isSelected(option) then
-                Tween.Fast(optBtn, {BackgroundColor3 = Theme:Get("CardHover")})
+                Tween.Fast(optBtn, { BackgroundColor3 = Theme:Get("CardHover") })
             end
         end)
         
         optBtn.MouseLeave:Connect(function()
             if not self:_isSelected(option) then
-                Tween.Fast(optBtn, {BackgroundColor3 = Theme:Get("Card")})
+                Tween.Fast(optBtn, { BackgroundColor3 = Theme:Get("Card") })
             end
         end)
         
@@ -211,13 +203,13 @@ function Dropdown:Toggle()
         local containerHeight = itemCount * (Config.Dropdown.ItemHeight + 2) + 8
         
         self.OptionsContainer.Visible = true
-        Tween.Normal(self.Frame, {Size = UDim2.new(1, 0, 0, Config.Card.Height + containerHeight + 8)})
-        Tween.Normal(self.OptionsContainer, {Size = UDim2.new(1, 0, 0, containerHeight)})
-        Tween.Fast(self.Arrow, {Rotation = 180})
+        Tween.Normal(self.Frame, { Size = UDim2.new(1, 0, 0, Config.Card.Height + containerHeight + 8) })
+        Tween.Normal(self.OptionsContainer, { Size = UDim2.new(1, 0, 0, containerHeight) })
+        Tween.Fast(self.Arrow, { Rotation = 180 })
     else
-        Tween.Normal(self.Frame, {Size = UDim2.new(1, 0, 0, Config.Card.Height)})
-        Tween.Normal(self.OptionsContainer, {Size = UDim2.new(1, 0, 0, 0)})
-        Tween.Fast(self.Arrow, {Rotation = 0})
+        Tween.Normal(self.Frame, { Size = UDim2.new(1, 0, 0, Config.Card.Height) })
+        Tween.Normal(self.OptionsContainer, { Size = UDim2.new(1, 0, 0, 0) })
+        Tween.Fast(self.Arrow, { Rotation = 0 })
         task.delay(Config.Animation.Normal, function()
             if not self.Open then
                 self.OptionsContainer.Visible = false
@@ -238,7 +230,7 @@ function Dropdown:Select(option, skipCallback)
     else
         self.Value = option
         self.SelectedLabel.Text = option or "Select..."
-        self:Toggle() -- Close after selection
+        self:Toggle()
     end
     
     self:_updateOptionVisuals()

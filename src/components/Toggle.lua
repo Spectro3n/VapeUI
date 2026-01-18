@@ -3,12 +3,12 @@
     Boolean switch component.
 ]]
 
-local Create = require(script.Parent.Parent.utils.Create)
-local Theme = require(script.Parent.Parent.core.Theme)
-local Config = require(script.Parent.Parent.core.Config)
-local Tween = require(script.Parent.Parent.utils.Tween)
-local Signal = require(script.Parent.Parent.core.Signal)
-local Card = require(script.Parent.Card)
+local Create = require("Utils/Create.lua")
+local Theme = require("Core/Theme.lua")
+local Config = require("Core/Config.lua")
+local Tween = require("Utils/Tween.lua")
+local Signal = require("Core/Signal.lua")
+local Card = require("Components/Card.lua")
 
 local Toggle = {}
 Toggle.__index = Toggle
@@ -18,22 +18,18 @@ function Toggle.new(parent, options)
     
     options = options or {}
     self.Name = options.Name or "Toggle"
-    self.Flag = options.Flag or self.Name
+    self.Flag = options.Flag
     self.Default = options.Default or false
     self.Callback = options.Callback or function() end
     self.Value = self.Default
     
-    -- Signals
     self.OnChanged = Signal.new()
     
-    -- Create card base
-    self.Card = Card.new(parent, {
-        Name = self.Name,
-    })
-    
+    -- Create card
+    self.Card = Card.new(parent, { Name = self.Name })
     self.Frame = self.Card.Frame
     
-    -- Toggle switch
+    -- Switch
     self.Switch = Create.Button({
         Name = "Switch",
         Size = UDim2.fromOffset(Config.Toggle.Width, Config.Toggle.Height),
@@ -48,7 +44,7 @@ function Toggle.new(parent, options)
         Create.Corner(UDim.new(1, 0)),
     })
     
-    -- Toggle indicator (circle)
+    -- Indicator
     self.Indicator = Create.Frame({
         Name = "Indicator",
         Size = UDim2.fromOffset(Config.Toggle.IndicatorSize, Config.Toggle.IndicatorSize),
@@ -61,19 +57,17 @@ function Toggle.new(parent, options)
         Create.Corner(UDim.new(1, 0)),
     })
     
-    -- Click handler
+    -- Events
     self.Switch.MouseButton1Click:Connect(function()
         self:Set(not self.Value)
     end)
     
-    -- Make entire card clickable
     self.Frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             self:Set(not self.Value)
         end
     end)
     
-    -- Set initial state
     self:_updateVisual(false)
     
     return self
@@ -95,22 +89,18 @@ end
 
 function Toggle:_updateVisual(animate)
     local tweenFunc = animate and Tween.Normal or function(inst, props)
-        for k, v in pairs(props) do
-            inst[k] = v
-        end
+        for k, v in pairs(props) do inst[k] = v end
     end
     
     if self.Value then
-        tweenFunc(self.Switch, {BackgroundColor3 = Theme:Get("ToggleOn")})
+        tweenFunc(self.Switch, { BackgroundColor3 = Theme:Get("ToggleOn") })
         tweenFunc(self.Indicator, {
             Position = UDim2.new(1, -Config.Toggle.IndicatorPadding - Config.Toggle.IndicatorSize, 0.5, 0),
-            AnchorPoint = Vector2.new(0, 0.5),
         })
     else
-        tweenFunc(self.Switch, {BackgroundColor3 = Theme:Get("ToggleOff")})
+        tweenFunc(self.Switch, { BackgroundColor3 = Theme:Get("ToggleOff") })
         tweenFunc(self.Indicator, {
             Position = UDim2.new(0, Config.Toggle.IndicatorPadding, 0.5, 0),
-            AnchorPoint = Vector2.new(0, 0.5),
         })
     end
 end
