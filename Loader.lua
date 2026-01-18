@@ -16,7 +16,7 @@
 -- CONFIGURATION
 -- ═══════════════════════════════════════════════════════════════════
 
-local REPO_BASE = "https://raw.githubusercontent.com/YourUsername/VapeUI/main/src/"
+local REPO_BASE = "https://raw.githubusercontent.com/Spectro3n/VapeUI/main/src/"
 local VERSION = "2.0.0"
 local DEBUG_MODE = false
 
