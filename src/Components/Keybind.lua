@@ -11,7 +11,8 @@ local Tween = require("Utils/Tween.lua")
 local Signal = require("Core/Signal.lua")
 local Card = require("Components/Card.lua")
 
-local UserInputService = Services:Get("UserInputService")
+-- ✅ CORRIGIDO: Acesso direto ao cache
+local UserInputService = Services.UserInputService
 
 local Keybind = {}
 Keybind.__index = Keybind

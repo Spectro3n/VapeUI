@@ -18,7 +18,8 @@ local _camera = nil
 
 function Scale:_getCamera()
     if not _camera then
-        _camera = Services:Get("Workspace").CurrentCamera
+        -- ✅ CORRIGIDO: Usa workspace direto ou Services.Camera
+        _camera = Services.Camera or workspace.CurrentCamera
     end
     return _camera
 end
@@ -47,6 +48,7 @@ end
 
 function Scale:ClearCache()
     _cachedRatio = nil
+    _camera = nil  -- ⬅️ Limpa cache da camera também
 end
 
 function Scale:Pixels(pixels)
@@ -92,14 +94,34 @@ function Scale:Font(baseSize)
     return math.floor(baseSize * ratio)
 end
 
--- Auto-update cache on viewport changes
+-- ✅ CORRIGIDO: Auto-update com retry seguro
 task.spawn(function()
     local camera = Scale:_getCamera()
-    if camera then
-        camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-            Scale:ClearCache()
-        end)
+    
+    -- Se camera não existe, aguarda
+    if not camera then
+        repeat
+            task.wait(0.1)
+            camera = workspace.CurrentCamera
+        until camera
+        _camera = camera
     end
+    
+    camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+        Scale:ClearCache()
+    end)
+    
+    -- Reconecta se camera mudar
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        Scale:ClearCache()
+        local newCamera = workspace.CurrentCamera
+        if newCamera then
+            _camera = newCamera
+            newCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+                Scale:ClearCache()
+            end)
+        end
+    end)
 end)
 
 return Scale
