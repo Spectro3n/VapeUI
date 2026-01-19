@@ -7,7 +7,7 @@
       ╚═══╝  ╚═╝  ╚═╝╚═╝     ╚══════╝      ╚═══╝  ╚══════╝
     
     Vape V5 UI Library - Ultimate Adaptive UI Framework
-    Version: 5.0.0
+    Version: 5.1.0 (Patched & Enhanced)
     
     🎮 COMO USAR:
     
@@ -16,16 +16,15 @@
     local Window = VapeUI:CreateWindow({
         Title = "Meu Menu",
         Subtitle = "v1.0",
-        Logo = "https://i.imgur.com/XXXXX.png", -- Suporta Imgur, Discord, etc
-        Theme = "Dark", -- Dark, Light, Custom
-        Size = {700, 400},
-        Keybind = "RightShift"
+        Logo = "https://i.imgur.com/XXXXX.png", -- Suporta Imgur, Discord, rbxassetid, etc
+        Theme = "Dark", -- Dark, Light, Ocean, Purple, Red, Midnight, Forest
+        Keybind = "RightShift",
+        BlurEnabled = true -- Novo: blur profissional
     })
     
-    local Tab = Window:CreateTab({
-        Name = "Combat",
-        Icon = "⚔️" -- Suporta emojis!
-    })
+    -- AMBOS FUNCIONAM AGORA:
+    local Tab = Window:CreateTab({Name = "Combat", Icon = "⚔️"})
+    local Tab2 = Window:CreateCategory({Name = "Render", Icon = "rbxassetid://14368350193"})
     
     local Module = Tab:CreateModule({
         Name = "Kill Aura",
@@ -34,9 +33,9 @@
         end
     })
     
-    Module:CreateSlider({...})
-    Module:CreateToggle({...})
-    -- etc...
+    -- NOTIFICAÇÕES - AMBOS ESTILOS FUNCIONAM:
+    VapeUI.Notify("Título", "Mensagem", 3, "Success")
+    VapeUI:Notify("Título", "Mensagem", 3, "Info")
 ]]
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -44,10 +43,10 @@
 -- ═══════════════════════════════════════════════════════════════════
 
 local VapeV5 = {
-    Version = "5.0.0",
+    Version = "5.1.0",
     Author = "VapeV5 Team",
     
-    -- Configurações Globais (Editáveis pelo Dev)
+    -- Configurações Globais
     Settings = {
         -- 🎨 Tema Principal
         Theme = {
@@ -79,7 +78,7 @@ local VapeV5 = {
         Rainbow = {
             Enabled = false,
             Speed = 1,
-            UpdateRate = 60,
+            UpdateRate = 30, -- Reduzido para performance
         },
         
         -- 🔧 Geral
@@ -87,9 +86,11 @@ local VapeV5 = {
             Scale = 1,
             AutoScale = true,
             Blur = true,
+            BlurSize = 14,
             Notifications = true,
             Tooltips = true,
             Sounds = true,
+            Debug = false, -- Modo debug para logs
         },
         
         -- 🔑 Keybinds
@@ -102,6 +103,8 @@ local VapeV5 = {
     _connections = {},
     _rainbowTable = {},
     _loaded = false,
+    _blurEffect = nil,
+    _overlay = nil,
 }
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -117,6 +120,7 @@ local Services = {
     HttpService = game:GetService("HttpService"),
     Players = game:GetService("Players"),
     CoreGui = game:GetService("CoreGui"),
+    Lighting = game:GetService("Lighting"),
 }
 
 -- Clone refs se disponível
@@ -126,6 +130,28 @@ for name, service in pairs(Services) do
 end
 
 local LocalPlayer = Services.Players.LocalPlayer
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 🐛 SISTEMA DE DEBUG
+-- ═══════════════════════════════════════════════════════════════════
+
+local Debug = {}
+
+function Debug.Log(message, level)
+    if not VapeV5.Settings.General.Debug then return end
+    level = level or "INFO"
+    warn(string.format("[VapeV5 %s] %s", level, tostring(message)))
+end
+
+function Debug.Error(message)
+    Debug.Log(message, "ERROR")
+end
+
+function Debug.Warn(message)
+    Debug.Log(message, "WARN")
+end
+
+VapeV5.Debug = Debug
 
 -- ═══════════════════════════════════════════════════════════════════
 -- 🛠️ UTILITÁRIOS
@@ -151,11 +177,34 @@ function Utils.FileExists(path)
     return success and result ~= nil and result ~= ""
 end
 
+-- Verificar se pasta existe
+function Utils.FolderExists(path)
+    local success = pcall(function()
+        return isfolder(path) and isfolder(path)
+    end)
+    if success then
+        return isfolder and isfolder(path)
+    end
+    return false
+end
+
+-- Criar pasta se não existir
+function Utils.EnsureFolder(path)
+    if not Utils.FolderExists(path) then
+        pcall(function()
+            makefolder(path)
+        end)
+    end
+end
+
 -- Carregar JSON
 function Utils.LoadJSON(path)
     local success, result = pcall(function()
         return Services.HttpService:JSONDecode(readfile(path))
     end)
+    if not success then
+        Debug.Error("Failed to load JSON: " .. path)
+    end
     return success and type(result) == "table" and result or nil
 end
 
@@ -164,6 +213,9 @@ function Utils.SaveJSON(path, data)
     local success = pcall(function()
         writefile(path, Services.HttpService:JSONEncode(data))
     end)
+    if not success then
+        Debug.Error("Failed to save JSON: " .. path)
+    end
     return success
 end
 
@@ -172,24 +224,33 @@ local TextBoundsParams = Instance.new("GetTextBoundsParams")
 TextBoundsParams.Width = math.huge
 
 function Utils.GetTextSize(text, size, font)
-    TextBoundsParams.Text = text
-    TextBoundsParams.Size = size or 14
-    if typeof(font) == "Font" then
-        TextBoundsParams.Font = font
-    else
-        TextBoundsParams.Font = VapeV5.Settings.Fonts.Regular
+    local success, result = pcall(function()
+        TextBoundsParams.Text = text or ""
+        TextBoundsParams.Size = size or 14
+        if typeof(font) == "Font" then
+            TextBoundsParams.Font = font
+        else
+            TextBoundsParams.Font = VapeV5.Settings.Fonts.Regular
+        end
+        return Services.TextService:GetTextBoundsAsync(TextBoundsParams)
+    end)
+    
+    if success then
+        return result
     end
-    return Services.TextService:GetTextBoundsAsync(TextBoundsParams)
+    return Vector2.new(100, 20) -- Fallback
 end
 
 -- Remover tags rich text
 function Utils.RemoveTags(str)
+    if not str then return "" end
     str = str:gsub("<br%s*/>", "\n")
     return str:gsub("<[^<>]->", "")
 end
 
 -- Deep clone table
 function Utils.DeepClone(original)
+    if type(original) ~= "table" then return original end
     local copy = {}
     for k, v in pairs(original) do
         if type(v) == "table" then
@@ -210,6 +271,19 @@ function Utils.LerpColor(c1, c2, t)
     )
 end
 
+-- Validar opções com defaults
+function Utils.ValidateOptions(options, defaults)
+    options = options or {}
+    for k, v in pairs(defaults) do
+        if options[k] == nil then
+            options[k] = v
+        end
+    end
+    return options
+end
+
+VapeV5.Utils = Utils
+
 -- ═══════════════════════════════════════════════════════════════════
 -- 🎨 SISTEMA DE CORES
 -- ═══════════════════════════════════════════════════════════════════
@@ -217,6 +291,7 @@ end
 local ColorSystem = {}
 
 function ColorSystem.Dark(color, amount)
+    if not color then return Color3.new(0, 0, 0) end
     local h, s, v = color:ToHSV()
     local mainV = select(3, VapeV5.Settings.Theme.Primary:ToHSV())
     if mainV > 0.5 then
@@ -227,6 +302,7 @@ function ColorSystem.Dark(color, amount)
 end
 
 function ColorSystem.Light(color, amount)
+    if not color then return Color3.new(1, 1, 1) end
     local h, s, v = color:ToHSV()
     local mainV = select(3, VapeV5.Settings.Theme.Primary:ToHSV())
     if mainV > 0.5 then
@@ -258,15 +334,17 @@ function ColorSystem.GetTextColor(h, s, v)
 end
 
 function ColorSystem.FromHex(hex)
+    if not hex then return Color3.new(1, 1, 1) end
     hex = hex:gsub("#", "")
     return Color3.fromRGB(
-        tonumber(hex:sub(1, 2), 16),
-        tonumber(hex:sub(3, 4), 16),
-        tonumber(hex:sub(5, 6), 16)
+        tonumber(hex:sub(1, 2), 16) or 255,
+        tonumber(hex:sub(3, 4), 16) or 255,
+        tonumber(hex:sub(5, 6), 16) or 255
     )
 end
 
 function ColorSystem.ToHex(color)
+    if not color then return "#FFFFFF" end
     return string.format("#%02X%02X%02X", 
         math.floor(color.R * 255),
         math.floor(color.G * 255),
@@ -277,7 +355,7 @@ end
 VapeV5.Color = ColorSystem
 
 -- ═══════════════════════════════════════════════════════════════════
--- 🎬 SISTEMA DE ANIMAÇÕES (TWEEN)
+-- 🎬 SISTEMA DE ANIMAÇÕES (TWEEN) - MELHORADO
 -- ═══════════════════════════════════════════════════════════════════
 
 local TweenSystem = {
@@ -285,16 +363,25 @@ local TweenSystem = {
 }
 
 function TweenSystem:Create(object, properties, duration, style, direction)
+    if not object then 
+        Debug.Warn("TweenSystem:Create - object is nil")
+        return nil 
+    end
+    
     if not VapeV5.Settings.Animations.Enabled then
         for prop, value in pairs(properties) do
-            object[prop] = value
+            pcall(function()
+                object[prop] = value
+            end)
         end
-        return
+        return nil
     end
     
     -- Cancelar tween anterior do mesmo objeto
     if self._activeTweens[object] then
-        self._activeTweens[object]:Cancel()
+        pcall(function()
+            self._activeTweens[object]:Cancel()
+        end)
     end
     
     local tweenInfo = TweenInfo.new(
@@ -303,7 +390,15 @@ function TweenSystem:Create(object, properties, duration, style, direction)
         direction or Enum.EasingDirection.Out
     )
     
-    local tween = Services.TweenService:Create(object, tweenInfo, properties)
+    local success, tween = pcall(function()
+        return Services.TweenService:Create(object, tweenInfo, properties)
+    end)
+    
+    if not success or not tween then
+        Debug.Warn("TweenSystem:Create - failed to create tween")
+        return nil
+    end
+    
     self._activeTweens[object] = tween
     
     tween.Completed:Once(function()
@@ -316,19 +411,31 @@ end
 
 function TweenSystem:Cancel(object)
     if self._activeTweens[object] then
-        self._activeTweens[object]:Cancel()
+        pcall(function()
+            self._activeTweens[object]:Cancel()
+        end)
         self._activeTweens[object] = nil
     end
+end
+
+function TweenSystem:CancelAll()
+    for object, tween in pairs(self._activeTweens) do
+        pcall(function()
+            tween:Cancel()
+        end)
+    end
+    table.clear(self._activeTweens)
 end
 
 VapeV5.Tween = TweenSystem
 
 -- ═══════════════════════════════════════════════════════════════════
--- 🖼️ SISTEMA DE ASSETS (Suporte a Imgur, Discord, etc)
+-- 🖼️ SISTEMA DE ASSETS - MELHORADO (Suporte Imgur, Discord, etc)
 -- ═══════════════════════════════════════════════════════════════════
 
 local AssetSystem = {
     _cache = {},
+    _cacheFolder = "VapeV5/cache",
     
     -- Assets embutidos (fallbacks)
     Embedded = {
@@ -363,46 +470,87 @@ local AssetSystem = {
     },
 }
 
--- Carregar asset de URL externa
-function AssetSystem:LoadFromURL(url)
-    if self._cache[url] then
-        return self._cache[url]
+-- Inicializar cache folder
+function AssetSystem:Init()
+    Utils.EnsureFolder("VapeV5")
+    Utils.EnsureFolder(self._cacheFolder)
+end
+
+-- Carregar asset de qualquer fonte
+function AssetSystem:LoadFromURL(source)
+    -- Nil ou vazio
+    if not source or source == "" then
+        return ""
     end
     
-    -- Verificar se é URL do Imgur, Discord, etc
-    if url:match("^https?://") then
-        -- Para URLs externas, precisamos baixar e usar getcustomasset
-        local fileName = "VapeV5_" .. Utils.RandomString(8) .. ".png"
-        local filePath = "VapeV5/cache/" .. fileName
-        
-        local success = pcall(function()
-            if not isfolder("VapeV5/cache") then
-                makefolder("VapeV5")
-                makefolder("VapeV5/cache")
-            end
-            
-            local response = game:HttpGet(url)
-            writefile(filePath, response)
+    -- Tabela com variantes
+    if type(source) == "table" then
+        return self:LoadFromURL(source.url or source.rbx or source.fallback or "")
+    end
+    
+    -- Garantir que é string
+    if type(source) ~= "string" then
+        Debug.Warn("AssetSystem:LoadFromURL - source is not a string")
+        return ""
+    end
+    
+    -- Já está em cache
+    if self._cache[source] then
+        return self._cache[source]
+    end
+    
+    -- rbxassetid - retorna direto
+    if source:match("^rbxassetid://") then
+        self._cache[source] = source
+        return source
+    end
+    
+    -- URL externa (Imgur, Discord, etc)
+    if source:match("^https?://") then
+        local success, body = pcall(function()
+            return game:HttpGet(source)
         end)
         
-        if success and getcustomasset then
-            local asset = getcustomasset(filePath)
-            self._cache[url] = asset
-            return asset
+        if not success or not body or #body == 0 then
+            Debug.Warn("AssetSystem:LoadFromURL - failed to fetch: " .. source)
+            return ""
         end
+        
+        -- Tentar salvar e usar getcustomasset
+        if writefile and getcustomasset then
+            local fileName = "asset_" .. tostring(math.random(100000, 999999)) .. ".png"
+            local filePath = self._cacheFolder .. "/" .. fileName
+            
+            local saveSuccess = pcall(function()
+                writefile(filePath, body)
+            end)
+            
+            if saveSuccess then
+                local assetSuccess, customAsset = pcall(function()
+                    return getcustomasset(filePath)
+                end)
+                
+                if assetSuccess and customAsset then
+                    self._cache[source] = customAsset
+                    Debug.Log("Asset cached: " .. source)
+                    return customAsset
+                end
+            end
+        end
+        
+        -- Fallback: alguns executors aceitam URL direto
+        self._cache[source] = source
+        return source
     end
     
-    -- Fallback para rbxassetid
-    if url:match("^rbxassetid://") then
-        self._cache[url] = url
-        return url
-    end
-    
+    -- Emoji ou texto - não é imagem
     return ""
 end
 
--- Obter asset embutido
+-- Obter asset embutido por nome
 function AssetSystem:Get(name)
+    if not name then return "" end
+    
     local parts = string.split(name, ".")
     local current = self.Embedded
     
@@ -410,22 +558,170 @@ function AssetSystem:Get(name)
         if current[part] then
             current = current[part]
         else
+            Debug.Warn("AssetSystem:Get - asset not found: " .. name)
             return ""
         end
     end
     
-    return current
+    if type(current) == "string" then
+        return current
+    end
+    
+    return ""
+end
+
+-- Verificar se é emoji/texto ou imagem
+function AssetSystem:IsEmoji(str)
+    if not str or type(str) ~= "string" then return false end
+    
+    -- Se começa com rbxassetid ou http, é imagem
+    if str:match("^rbxassetid://") or str:match("^https?://") then
+        return false
+    end
+    
+    -- Se é curto e não parece path, provavelmente é emoji
+    if #str <= 4 then
+        return true
+    end
+    
+    return false
 end
 
 VapeV5.Assets = AssetSystem
 
 -- ═══════════════════════════════════════════════════════════════════
--- 🔔 SISTEMA DE NOTIFICAÇÕES
+-- 🌫️ SISTEMA DE BLUR PROFISSIONAL
+-- ═══════════════════════════════════════════════════════════════════
+
+local BlurSystem = {
+    _blur = nil,
+    _overlay = nil,
+    _overlayGui = nil,
+    _enabled = false,
+}
+
+function BlurSystem:Init(parent)
+    -- Criar overlay GUI separado
+    self._overlayGui = Instance.new("ScreenGui")
+    self._overlayGui.Name = Utils.RandomString(8) .. "_Overlay"
+    self._overlayGui.DisplayOrder = 999998
+    self._overlayGui.IgnoreGuiInset = true
+    self._overlayGui.ResetOnSpawn = false
+    
+    local success = pcall(function()
+        self._overlayGui.Parent = Services.CoreGui
+    end)
+    
+    if not success then
+        self._overlayGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+    
+    -- Overlay frame (escurecimento)
+    self._overlay = Instance.new("Frame")
+    self._overlay.Name = "BlurOverlay"
+    self._overlay.Size = UDim2.fromScale(1, 1)
+    self._overlay.Position = UDim2.new(0, 0, 0, 0)
+    self._overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    self._overlay.BackgroundTransparency = 1
+    self._overlay.BorderSizePixel = 0
+    self._overlay.ZIndex = -1
+    self._overlay.Parent = self._overlayGui
+    
+    self._overlayGui.Enabled = false
+end
+
+function BlurSystem:Enable(size, duration)
+    if not VapeV5.Settings.General.Blur then return end
+    if self._enabled then return end
+    
+    self._enabled = true
+    size = size or VapeV5.Settings.General.BlurSize or 14
+    duration = duration or 0.25
+    
+    -- Criar BlurEffect
+    if not self._blur then
+        self._blur = Instance.new("BlurEffect")
+        self._blur.Name = "VapeV5_Blur"
+        self._blur.Size = 0
+        self._blur.Parent = Services.Lighting
+    end
+    
+    -- Mostrar overlay
+    if self._overlayGui then
+        self._overlayGui.Enabled = true
+    end
+    
+    -- Animar blur
+    VapeV5.Tween:Create(self._blur, {Size = size}, duration, Enum.EasingStyle.Quad)
+    
+    -- Animar overlay (escurecimento sutil)
+    if self._overlay then
+        VapeV5.Tween:Create(self._overlay, {BackgroundTransparency = 0.4}, duration, Enum.EasingStyle.Quad)
+    end
+end
+
+function BlurSystem:Disable(duration)
+    if not self._enabled then return end
+    
+    self._enabled = false
+    duration = duration or 0.2
+    
+    -- Animar blur para 0
+    if self._blur then
+        local tween = VapeV5.Tween:Create(self._blur, {Size = 0}, duration, Enum.EasingStyle.Quad)
+        if tween then
+            tween.Completed:Once(function()
+                if self._blur and not self._enabled then
+                    self._blur:Destroy()
+                    self._blur = nil
+                end
+            end)
+        end
+    end
+    
+    -- Animar overlay
+    if self._overlay then
+        local tween = VapeV5.Tween:Create(self._overlay, {BackgroundTransparency = 1}, duration, Enum.EasingStyle.Quad)
+        if tween then
+            tween.Completed:Once(function()
+                if self._overlayGui and not self._enabled then
+                    self._overlayGui.Enabled = false
+                end
+            end)
+        end
+    end
+end
+
+function BlurSystem:Toggle()
+    if self._enabled then
+        self:Disable()
+    else
+        self:Enable()
+    end
+end
+
+function BlurSystem:Destroy()
+    if self._blur then
+        self._blur:Destroy()
+        self._blur = nil
+    end
+    if self._overlayGui then
+        self._overlayGui:Destroy()
+        self._overlayGui = nil
+    end
+    self._enabled = false
+end
+
+VapeV5.Blur = BlurSystem
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 🔔 SISTEMA DE NOTIFICAÇÕES - MELHORADO
 -- ═══════════════════════════════════════════════════════════════════
 
 local NotificationSystem = {
     _container = nil,
     _queue = {},
+    _active = {},
 }
 
 function NotificationSystem:Init(parent)
@@ -438,51 +734,103 @@ end
 
 function NotificationSystem:Send(options)
     if not VapeV5.Settings.General.Notifications then return end
+    if not self._container then return end
     
-    options = options or {}
-    local title = options.Title or "Notification"
-    local message = options.Message or ""
-    local duration = options.Duration or 3
-    local type = options.Type or "Info" -- Info, Warning, Error, Success
+    options = Utils.ValidateOptions(options, {
+        Title = "Notification",
+        Message = "",
+        Duration = 3,
+        Type = "Info"
+    })
+    
+    local title = options.Title
+    local message = options.Message
+    local duration = options.Duration
+    local notifType = options.Type
     local icon = options.Icon
     
     task.spawn(function()
         local theme = VapeV5.Settings.Theme
         
+        -- Calcular posição baseada em notificações ativas
+        local yOffset = 0
+        for _, notif in pairs(self._active) do
+            yOffset = yOffset + 90
+        end
+        
         -- Container da notificação
         local notif = Instance.new("Frame")
-        notif.Name = "Notification"
-        notif.Size = UDim2.fromOffset(
-            math.max(Utils.GetTextSize(Utils.RemoveTags(message), 14, VapeV5.Settings.Fonts.Regular).X + 80, 280),
-            80
-        )
-        notif.Position = UDim2.new(1, 20, 1, -(90 * (#self._container:GetChildren() + 1)))
+        notif.Name = "Notification_" .. Utils.RandomString(5)
+        
+        local messageWidth = Utils.GetTextSize(Utils.RemoveTags(message), 14, VapeV5.Settings.Fonts.Regular).X
+        notif.Size = UDim2.fromOffset(math.max(messageWidth + 80, 280), 80)
+        notif.Position = UDim2.new(1, 20, 1, -(90 + yOffset))
         notif.BackgroundColor3 = theme.Primary
-        notif.BackgroundTransparency = 0.1
+        notif.BackgroundTransparency = 0.05
         notif.BorderSizePixel = 0
         notif.Parent = self._container
         
+        self._active[notif] = true
+        
+        -- Corner
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, 8)
         corner.Parent = notif
         
+        -- Stroke sutil
         local stroke = Instance.new("UIStroke")
-        stroke.Color = ColorSystem.Light(theme.Primary, 0.1)
+        stroke.Color = ColorSystem.Light(theme.Primary, 0.15)
         stroke.Thickness = 1
+        stroke.Transparency = 0.5
         stroke.Parent = notif
+        
+        -- Shadow/Blur simulado
+        local shadow = Instance.new("Frame")
+        shadow.Name = "Shadow"
+        shadow.Size = UDim2.new(1, 16, 1, 16)
+        shadow.Position = UDim2.fromOffset(-8, -8)
+        shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        shadow.BackgroundTransparency = 0.7
+        shadow.BorderSizePixel = 0
+        shadow.ZIndex = -1
+        shadow.Parent = notif
+        
+        local shadowCorner = Instance.new("UICorner")
+        shadowCorner.CornerRadius = UDim.new(0, 12)
+        shadowCorner.Parent = shadow
+        
+        -- Cor lateral baseada no tipo
+        local typeColors = {
+            Info = theme.Accent,
+            Success = theme.Success,
+            Warning = theme.Warning,
+            Error = theme.Error,
+        }
+        
+        local sideBar = Instance.new("Frame")
+        sideBar.Size = UDim2.new(0, 4, 1, -8)
+        sideBar.Position = UDim2.fromOffset(4, 4)
+        sideBar.BackgroundColor3 = typeColors[notifType] or theme.Accent
+        sideBar.BorderSizePixel = 0
+        sideBar.Parent = notif
+        
+        local sideCorner = Instance.new("UICorner")
+        sideCorner.CornerRadius = UDim.new(1, 0)
+        sideCorner.Parent = sideBar
         
         -- Ícone
         local iconLabel = Instance.new("ImageLabel")
-        iconLabel.Size = UDim2.fromOffset(32, 32)
-        iconLabel.Position = UDim2.fromOffset(15, 24)
+        iconLabel.Size = UDim2.fromOffset(28, 28)
+        iconLabel.Position = UDim2.fromOffset(18, 26)
         iconLabel.BackgroundTransparency = 1
-        iconLabel.Image = icon or AssetSystem:Get("Notification." .. type)
+        iconLabel.Image = icon or AssetSystem:Get("Notification." .. notifType)
+        iconLabel.ImageColor3 = typeColors[notifType] or theme.Accent
         iconLabel.Parent = notif
         
         -- Título
         local titleLabel = Instance.new("TextLabel")
-        titleLabel.Size = UDim2.new(1, -70, 0, 20)
-        titleLabel.Position = UDim2.fromOffset(55, 15)
+        titleLabel.Size = UDim2.new(1, -70, 0, 22)
+        titleLabel.Position = UDim2.fromOffset(55, 12)
         titleLabel.BackgroundTransparency = 1
         titleLabel.Text = title
         titleLabel.TextColor3 = theme.Text
@@ -494,7 +842,7 @@ function NotificationSystem:Send(options)
         -- Mensagem
         local messageLabel = Instance.new("TextLabel")
         messageLabel.Size = UDim2.new(1, -70, 0, 20)
-        messageLabel.Position = UDim2.fromOffset(55, 38)
+        messageLabel.Position = UDim2.fromOffset(55, 36)
         messageLabel.BackgroundTransparency = 1
         messageLabel.Text = message
         messageLabel.TextColor3 = theme.TextDark
@@ -502,15 +850,26 @@ function NotificationSystem:Send(options)
         messageLabel.TextXAlignment = Enum.TextXAlignment.Left
         messageLabel.FontFace = VapeV5.Settings.Fonts.Regular
         messageLabel.RichText = true
+        messageLabel.TextTruncate = Enum.TextTruncate.AtEnd
         messageLabel.Parent = notif
         
         -- Barra de progresso
+        local progressBg = Instance.new("Frame")
+        progressBg.Size = UDim2.new(1, -16, 0, 3)
+        progressBg.Position = UDim2.new(0, 8, 1, -8)
+        progressBg.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.05)
+        progressBg.BorderSizePixel = 0
+        progressBg.Parent = notif
+        
+        local progressCornerBg = Instance.new("UICorner")
+        progressCornerBg.CornerRadius = UDim.new(1, 0)
+        progressCornerBg.Parent = progressBg
+        
         local progressBar = Instance.new("Frame")
-        progressBar.Size = UDim2.new(1, -10, 0, 3)
-        progressBar.Position = UDim2.new(0, 5, 1, -8)
-        progressBar.BackgroundColor3 = theme.Accent
+        progressBar.Size = UDim2.fromScale(1, 1)
+        progressBar.BackgroundColor3 = typeColors[notifType] or theme.Accent
         progressBar.BorderSizePixel = 0
-        progressBar.Parent = notif
+        progressBar.Parent = progressBg
         
         local progressCorner = Instance.new("UICorner")
         progressCorner.CornerRadius = UDim.new(1, 0)
@@ -519,78 +878,108 @@ function NotificationSystem:Send(options)
         -- Animação de entrada
         VapeV5.Tween:Create(notif, {
             Position = UDim2.new(1, -notif.Size.X.Offset - 20, notif.Position.Y.Scale, notif.Position.Y.Offset)
-        }, 0.3)
+        }, 0.35, Enum.EasingStyle.Back)
+        
+        -- Animação do ícone (pulse)
+        task.delay(0.2, function()
+            VapeV5.Tween:Create(iconLabel, {Size = UDim2.fromOffset(32, 32), Position = UDim2.fromOffset(16, 24)}, 0.15)
+            task.wait(0.15)
+            VapeV5.Tween:Create(iconLabel, {Size = UDim2.fromOffset(28, 28), Position = UDim2.fromOffset(18, 26)}, 0.1)
+        end)
         
         -- Animação da barra de progresso
         VapeV5.Tween:Create(progressBar, {
-            Size = UDim2.new(0, 0, 0, 3)
+            Size = UDim2.new(0, 0, 1, 0)
         }, duration, Enum.EasingStyle.Linear)
         
         -- Remover após duração
         task.delay(duration, function()
-            VapeV5.Tween:Create(notif, {
-                Position = UDim2.new(1, 20, notif.Position.Y.Scale, notif.Position.Y.Offset)
-            }, 0.3)
+            self._active[notif] = nil
             
-            task.wait(0.3)
-            notif:Destroy()
+            VapeV5.Tween:Create(notif, {
+                Position = UDim2.new(1, 20, notif.Position.Y.Scale, notif.Position.Y.Offset),
+                BackgroundTransparency = 1
+            }, 0.3, Enum.EasingStyle.Quad)
+            
+            task.wait(0.35)
+            if notif and notif.Parent then
+                notif:Destroy()
+            end
             
             -- Reposicionar outras notificações
-            for i, child in ipairs(self._container:GetChildren()) do
-                if child:IsA("Frame") then
-                    VapeV5.Tween:Create(child, {
-                        Position = UDim2.new(1, -child.Size.X.Offset - 20, 1, -(90 * i))
-                    }, 0.2)
-                end
+            local index = 0
+            for child, _ in pairs(self._active) do
+                VapeV5.Tween:Create(child, {
+                    Position = UDim2.new(1, -child.Size.X.Offset - 20, 1, -(90 * (index + 1)))
+                }, 0.25, Enum.EasingStyle.Quad)
+                index = index + 1
             end
         end)
     end)
 end
 
-VapeV5.Notify = function(title, message, duration, type)
-    NotificationSystem:Send({
-        Title = title,
-        Message = message,
-        Duration = duration,
-        Type = type
-    })
+-- Wrapper que aceita ambos : e .
+local function CreateNotifyWrapper()
+    local originalSend = function(title, message, duration, notifType)
+        NotificationSystem:Send({
+            Title = title,
+            Message = message,
+            Duration = duration,
+            Type = notifType
+        })
+    end
+    
+    return function(self_or_title, maybe_title, maybe_message, maybe_duration, maybe_type)
+        -- Chamado com : (self, title, msg, duration, type)
+        if type(self_or_title) == "table" and type(maybe_title) == "string" then
+            return originalSend(maybe_title, maybe_message, maybe_duration, maybe_type)
+        else
+            -- Chamado com . (title, message, duration, type)
+            return originalSend(self_or_title, maybe_title, maybe_message, maybe_duration)
+        end
+    end
 end
 
+VapeV5.Notify = CreateNotifyWrapper()
+
 -- ═══════════════════════════════════════════════════════════════════
--- 🧱 COMPONENTES BASE
+-- 🧱 COMPONENTES BASE - MELHORADOS
 -- ═══════════════════════════════════════════════════════════════════
 
 local Components = {}
 
 -- Adicionar canto arredondado
 function Components.AddCorner(parent, radius)
+    if not parent then return nil end
     local corner = Instance.new("UICorner")
     corner.CornerRadius = radius or UDim.new(0, 6)
     corner.Parent = parent
     return corner
 end
 
--- Adicionar blur/sombra
-function Components.AddBlur(parent, options)
+-- Adicionar blur/sombra visual
+function Components.AddShadow(parent, options)
+    if not parent then return nil end
     options = options or {}
     
-    local blur = Instance.new("Frame")
-    blur.Name = "Blur"
-    blur.Size = UDim2.new(1, 20, 1, 20)
-    blur.Position = UDim2.fromOffset(-10, -10)
-    blur.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    blur.BackgroundTransparency = options.Transparency or 0.5
-    blur.BorderSizePixel = 0
-    blur.ZIndex = -1
-    blur.Parent = parent
+    local shadow = Instance.new("Frame")
+    shadow.Name = "Shadow"
+    shadow.Size = UDim2.new(1, options.Expand or 16, 1, options.Expand or 16)
+    shadow.Position = UDim2.fromOffset(-(options.Expand or 16) / 2, -(options.Expand or 16) / 2)
+    shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    shadow.BackgroundTransparency = options.Transparency or 0.6
+    shadow.BorderSizePixel = 0
+    shadow.ZIndex = -1
+    shadow.Parent = parent
     
-    Components.AddCorner(blur, options.Radius or UDim.new(0, 10))
+    Components.AddCorner(shadow, options.Radius or UDim.new(0, 10))
     
-    return blur
+    return shadow
 end
 
 -- Adicionar stroke
 function Components.AddStroke(parent, options)
+    if not parent then return nil end
     options = options or {}
     
     local stroke = Instance.new("UIStroke")
@@ -602,8 +991,38 @@ function Components.AddStroke(parent, options)
     return stroke
 end
 
--- Botão de fechar
+-- Adicionar gradiente
+function Components.AddGradient(parent, options)
+    if not parent then return nil end
+    options = options or {}
+    
+    local gradient = Instance.new("UIGradient")
+    gradient.Rotation = options.Rotation or 90
+    
+    if options.Colors then
+        local keypoints = {}
+        for i, color in ipairs(options.Colors) do
+            table.insert(keypoints, ColorSequenceKeypoint.new((i - 1) / (#options.Colors - 1), color))
+        end
+        gradient.Color = ColorSequence.new(keypoints)
+    end
+    
+    gradient.Parent = parent
+    return gradient
+end
+
+-- Adicionar AspectRatioConstraint
+function Components.AddAspectRatio(parent, ratio)
+    if not parent then return nil end
+    local constraint = Instance.new("UIAspectRatioConstraint")
+    constraint.AspectRatio = ratio or 1
+    constraint.Parent = parent
+    return constraint
+end
+
+-- Criar botão de fechar
 function Components.CreateCloseButton(parent, callback)
+    if not parent then return nil end
     local theme = VapeV5.Settings.Theme
     
     local button = Instance.new("ImageButton")
@@ -637,9 +1056,9 @@ function Components.CreateCloseButton(parent, callback)
     return button
 end
 
--- Tooltip
+-- Adicionar Tooltip
 function Components.AddTooltip(element, text)
-    if not text or not VapeV5.Settings.General.Tooltips then return end
+    if not text or not element or not VapeV5.Settings.General.Tooltips then return end
     
     local tooltip = VapeV5._tooltip
     if not tooltip then return end
@@ -649,8 +1068,11 @@ function Components.AddTooltip(element, text)
         tooltip.Size = UDim2.fromOffset(size.X + 16, size.Y + 12)
         tooltip.Text = text
         
-        local guiSize = VapeV5._gui.AbsoluteSize
-        local scale = VapeV5._scale.Scale
+        local gui = VapeV5._gui
+        if not gui then return end
+        
+        local guiSize = gui.AbsoluteSize
+        local scale = VapeV5._scale and VapeV5._scale.Scale or 1
         
         local posX = x + 16
         local posY = y - (tooltip.Size.Y.Offset / 2)
@@ -676,39 +1098,90 @@ function Components.AddTooltip(element, text)
     end)
 end
 
--- Tornar arrastável
+-- Tornar arrastável com limites
 function Components.MakeDraggable(element, handle)
+    if not element then return end
     handle = handle or element
+    
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
     
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or 
            input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = element.Position
+        end
+    end)
+    
+    handle.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    Services.UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or
+           input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            local scale = VapeV5._scale and VapeV5._scale.Scale or 1
             
-            local dragStart = input.Position
-            local startPos = element.Position
+            local newX = startPos.X.Offset + delta.X / scale
+            local newY = startPos.Y.Offset + delta.Y / scale
             
-            local dragConnection
-            local releaseConnection
+            -- Limitar dentro da tela
+            local gui = VapeV5._gui
+            if gui then
+                local guiSize = gui.AbsoluteSize / scale
+                newX = math.clamp(newX, 0, guiSize.X - element.AbsoluteSize.X / scale)
+                newY = math.clamp(newY, 0, guiSize.Y - element.AbsoluteSize.Y / scale)
+            end
             
-            dragConnection = Services.UserInputService.InputChanged:Connect(function(moveInput)
-                if moveInput.UserInputType == Enum.UserInputType.MouseMovement or
-                   moveInput.UserInputType == Enum.UserInputType.Touch then
-                    local delta = moveInput.Position - dragStart
-                    local scale = VapeV5._scale and VapeV5._scale.Scale or 1
-                    
-                    element.Position = UDim2.fromOffset(
-                        startPos.X.Offset + delta.X / scale,
-                        startPos.Y.Offset + delta.Y / scale
-                    )
-                end
-            end)
-            
-            releaseConnection = input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    if dragConnection then dragConnection:Disconnect() end
-                    if releaseConnection then releaseConnection:Disconnect() end
-                end
-            end)
+            element.Position = UDim2.fromOffset(newX, newY)
+        end
+    end)
+end
+
+-- Efeito hover com glow
+function Components.AddHoverEffect(element, options)
+    if not element then return end
+    options = options or {}
+    
+    local originalColor = options.OriginalColor or element.BackgroundColor3
+    local hoverColor = options.HoverColor or ColorSystem.Light(originalColor, 0.05)
+    local duration = options.Duration or 0.1
+    
+    element.MouseEnter:Connect(function()
+        VapeV5.Tween:Create(element, {BackgroundColor3 = hoverColor}, duration)
+        
+        -- Efeito de "lift" sutil
+        if options.Lift then
+            VapeV5.Tween:Create(element, {
+                Position = UDim2.new(
+                    element.Position.X.Scale,
+                    element.Position.X.Offset,
+                    element.Position.Y.Scale,
+                    element.Position.Y.Offset - 2
+                )
+            }, duration)
+        end
+    end)
+    
+    element.MouseLeave:Connect(function()
+        VapeV5.Tween:Create(element, {BackgroundColor3 = originalColor}, duration)
+        
+        if options.Lift then
+            VapeV5.Tween:Create(element, {
+                Position = UDim2.new(
+                    element.Position.X.Scale,
+                    element.Position.X.Offset,
+                    element.Position.Y.Scale,
+                    element.Position.Y.Offset + 2
+                )
+            }, duration)
         end
     end)
 end
@@ -716,37 +1189,46 @@ end
 VapeV5.Components = Components
 
 -- ═══════════════════════════════════════════════════════════════════
--- 📦 COMPONENTES DE INPUT
+-- 📦 COMPONENTES DE INPUT - MELHORADOS
 -- ═══════════════════════════════════════════════════════════════════
 
 local InputComponents = {}
 
 -- Toggle/Switch
 function InputComponents.CreateToggle(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "Toggle",
+        Default = false,
+        Tooltip = nil,
+        Darker = false,
+        Callback = function() end
+    })
+    
     local theme = VapeV5.Settings.Theme
     
     local api = {
         Type = "Toggle",
-        Enabled = options.Default or false,
-        Callback = options.Callback or function() end,
+        Enabled = options.Default,
+        Callback = options.Callback,
     }
     
     local container = Instance.new("TextButton")
-    container.Name = (options.Name or "Toggle") .. "Toggle"
+    container.Name = options.Name .. "Toggle"
     container.Size = UDim2.new(1, 0, 0, 32)
     container.BackgroundColor3 = ColorSystem.Dark(parent.BackgroundColor3, options.Darker and 0.02 or 0)
     container.BackgroundTransparency = 0
     container.BorderSizePixel = 0
     container.AutoButtonColor = false
-    container.Text = "          " .. (options.Name or "Toggle")
+    container.Text = "          " .. options.Name
     container.TextXAlignment = Enum.TextXAlignment.Left
     container.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
     container.TextSize = 14
     container.FontFace = VapeV5.Settings.Fonts.Regular
     container.Parent = parent
     
-    Components.AddTooltip(container, options.Tooltip)
+    if options.Tooltip then
+        Components.AddTooltip(container, options.Tooltip)
+    end
     
     -- Knob holder
     local knobHolder = Instance.new("Frame")
@@ -772,11 +1254,12 @@ function InputComponents.CreateToggle(parent, options)
         
         VapeV5.Tween:Create(knobHolder, {
             BackgroundColor3 = value and theme.Accent or ColorSystem.Light(theme.Primary, 0.14)
-        }, 0.1)
+        }, 0.15)
         
         VapeV5.Tween:Create(knob, {
-            Position = UDim2.fromOffset(value and 12 or 2, 2)
-        }, 0.1)
+            Position = UDim2.fromOffset(value and 12 or 2, 2),
+            BackgroundColor3 = value and Color3.new(1, 1, 1) or theme.Primary
+        }, 0.15)
         
         if not silent then
             self.Callback(value)
@@ -792,30 +1275,32 @@ function InputComponents.CreateToggle(parent, options)
     end
     
     function api:Load(data)
-        if data.Enabled ~= self.Enabled then
+        if data and data.Enabled ~= nil and data.Enabled ~= self.Enabled then
             self:SetValue(data.Enabled)
         end
     end
     
     -- Eventos
-    local hovered = false
-    
     container.MouseEnter:Connect(function()
-        hovered = true
         if not api.Enabled then
             VapeV5.Tween:Create(knobHolder, {
-                BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.37)
+                BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.25)
             }, 0.1)
         end
+        VapeV5.Tween:Create(container, {
+            BackgroundColor3 = ColorSystem.Light(container.BackgroundColor3, 0.02)
+        }, 0.1)
     end)
     
     container.MouseLeave:Connect(function()
-        hovered = false
         if not api.Enabled then
             VapeV5.Tween:Create(knobHolder, {
                 BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.14)
             }, 0.1)
         end
+        VapeV5.Tween:Create(container, {
+            BackgroundColor3 = ColorSystem.Dark(parent.BackgroundColor3, options.Darker and 0.02 or 0)
+        }, 0.1)
     end)
     
     container.MouseButton1Click:Connect(function()
@@ -833,20 +1318,31 @@ end
 
 -- Slider
 function InputComponents.CreateSlider(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "Slider",
+        Min = 0,
+        Max = 100,
+        Default = 0,
+        Decimal = 1,
+        Suffix = "",
+        Tooltip = nil,
+        Darker = false,
+        Callback = function() end
+    })
+    
     local theme = VapeV5.Settings.Theme
     
     local api = {
         Type = "Slider",
-        Value = options.Default or options.Min or 0,
-        Min = options.Min or 0,
-        Max = options.Max or 100,
-        Decimal = options.Decimal or 1,
-        Callback = options.Callback or function() end,
+        Value = options.Default,
+        Min = options.Min,
+        Max = options.Max,
+        Decimal = options.Decimal,
+        Callback = options.Callback,
     }
     
     local container = Instance.new("TextButton")
-    container.Name = (options.Name or "Slider") .. "Slider"
+    container.Name = options.Name .. "Slider"
     container.Size = UDim2.new(1, 0, 0, 50)
     container.BackgroundColor3 = ColorSystem.Dark(parent.BackgroundColor3, options.Darker and 0.02 or 0)
     container.BorderSizePixel = 0
@@ -854,14 +1350,16 @@ function InputComponents.CreateSlider(parent, options)
     container.Text = ""
     container.Parent = parent
     
-    Components.AddTooltip(container, options.Tooltip)
+    if options.Tooltip then
+        Components.AddTooltip(container, options.Tooltip)
+    end
     
     -- Título
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.fromOffset(100, 20)
+    title.Size = UDim2.new(0.6, 0, 0, 20)
     title.Position = UDim2.fromOffset(10, 5)
     title.BackgroundTransparency = 1
-    title.Text = options.Name or "Slider"
+    title.Text = options.Name
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
     title.TextSize = 12
@@ -870,22 +1368,22 @@ function InputComponents.CreateSlider(parent, options)
     
     -- Valor
     local valueLabel = Instance.new("TextLabel")
-    valueLabel.Size = UDim2.fromOffset(60, 20)
-    valueLabel.Position = UDim2.new(1, -70, 0, 5)
+    valueLabel.Size = UDim2.new(0.4, -10, 0, 20)
+    valueLabel.Position = UDim2.new(0.6, 0, 0, 5)
     valueLabel.BackgroundTransparency = 1
-    valueLabel.Text = tostring(api.Value) .. (options.Suffix or "")
+    valueLabel.Text = tostring(api.Value) .. options.Suffix
     valueLabel.TextXAlignment = Enum.TextXAlignment.Right
-    valueLabel.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
+    valueLabel.TextColor3 = theme.Accent
     valueLabel.TextSize = 12
-    valueLabel.FontFace = VapeV5.Settings.Fonts.Regular
+    valueLabel.FontFace = VapeV5.Settings.Fonts.SemiBold
     valueLabel.Parent = container
     
     -- Barra de fundo
     local barBg = Instance.new("Frame")
     barBg.Name = "BarBackground"
-    barBg.Size = UDim2.new(1, -20, 0, 4)
-    barBg.Position = UDim2.fromOffset(10, 35)
-    barBg.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.05)
+    barBg.Size = UDim2.new(1, -20, 0, 6)
+    barBg.Position = UDim2.fromOffset(10, 32)
+    barBg.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.08)
     barBg.BorderSizePixel = 0
     barBg.Parent = container
     Components.AddCorner(barBg, UDim.new(1, 0))
@@ -893,11 +1391,22 @@ function InputComponents.CreateSlider(parent, options)
     -- Barra de preenchimento
     local barFill = Instance.new("Frame")
     barFill.Name = "BarFill"
-    barFill.Size = UDim2.fromScale((api.Value - api.Min) / (api.Max - api.Min), 1)
+    barFill.Size = UDim2.fromScale(math.max((api.Value - api.Min) / (api.Max - api.Min), 0.02), 1)
     barFill.BackgroundColor3 = theme.Accent
     barFill.BorderSizePixel = 0
     barFill.Parent = barBg
     Components.AddCorner(barFill, UDim.new(1, 0))
+    
+    -- Glow no fill
+    local fillGlow = Instance.new("Frame")
+    fillGlow.Size = UDim2.new(1, 4, 1, 4)
+    fillGlow.Position = UDim2.fromOffset(-2, -2)
+    fillGlow.BackgroundColor3 = theme.Accent
+    fillGlow.BackgroundTransparency = 0.7
+    fillGlow.BorderSizePixel = 0
+    fillGlow.ZIndex = -1
+    fillGlow.Parent = barFill
+    Components.AddCorner(fillGlow, UDim.new(1, 0))
     
     -- Knob
     local knobHolder = Instance.new("Frame")
@@ -908,12 +1417,18 @@ function InputComponents.CreateSlider(parent, options)
     knobHolder.Parent = barFill
     
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(14, 14)
+    knob.Size = UDim2.fromOffset(12, 12)
     knob.Position = UDim2.fromScale(0.5, 0.5)
     knob.AnchorPoint = Vector2.new(0.5, 0.5)
     knob.BackgroundColor3 = theme.Accent
     knob.Parent = knobHolder
     Components.AddCorner(knob, UDim.new(1, 0))
+    
+    -- Borda branca no knob
+    local knobBorder = Instance.new("UIStroke")
+    knobBorder.Color = Color3.new(1, 1, 1)
+    knobBorder.Thickness = 2
+    knobBorder.Parent = knob
     
     -- API
     function api:SetValue(value, silent)
@@ -921,7 +1436,7 @@ function InputComponents.CreateSlider(parent, options)
         value = math.floor(value * self.Decimal) / self.Decimal
         
         self.Value = value
-        valueLabel.Text = tostring(value) .. (options.Suffix or "")
+        valueLabel.Text = tostring(value) .. options.Suffix
         
         local percent = (value - self.Min) / (self.Max - self.Min)
         VapeV5.Tween:Create(barFill, {
@@ -938,7 +1453,7 @@ function InputComponents.CreateSlider(parent, options)
     end
     
     function api:Load(data)
-        if self.Value ~= data.Value then
+        if data and data.Value ~= nil and self.Value ~= data.Value then
             self:SetValue(data.Value)
         end
     end
@@ -975,12 +1490,17 @@ function InputComponents.CreateSlider(parent, options)
     
     -- Hover effects
     container.MouseEnter:Connect(function()
-        VapeV5.Tween:Create(knob, {Size = UDim2.fromOffset(16, 16)}, 0.1)
+        VapeV5.Tween:Create(knob, {Size = UDim2.fromOffset(14, 14)}, 0.1)
+        VapeV5.Tween:Create(fillGlow, {BackgroundTransparency = 0.5}, 0.1)
     end)
     
     container.MouseLeave:Connect(function()
-        VapeV5.Tween:Create(knob, {Size = UDim2.fromOffset(14, 14)}, 0.1)
+        VapeV5.Tween:Create(knob, {Size = UDim2.fromOffset(12, 12)}, 0.1)
+        VapeV5.Tween:Create(fillGlow, {BackgroundTransparency = 0.7}, 0.1)
     end)
+    
+    -- Valor inicial
+    api:SetValue(options.Default, true)
     
     api.Object = container
     return api
@@ -988,27 +1508,42 @@ end
 
 -- Dropdown
 function InputComponents.CreateDropdown(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "Dropdown",
+        List = {},
+        Default = nil,
+        Tooltip = nil,
+        Darker = false,
+        Callback = function() end
+    })
+    
     local theme = VapeV5.Settings.Theme
+    
+    if not options.Default and #options.List > 0 then
+        options.Default = options.List[1]
+    end
     
     local api = {
         Type = "Dropdown",
-        Value = options.Default or options.List[1] or "None",
-        List = options.List or {},
-        Callback = options.Callback or function() end,
+        Value = options.Default or "None",
+        List = options.List,
+        Callback = options.Callback,
         Expanded = false,
     }
     
     local container = Instance.new("TextButton")
-    container.Name = (options.Name or "Dropdown") .. "Dropdown"
+    container.Name = options.Name .. "Dropdown"
     container.Size = UDim2.new(1, 0, 0, 40)
     container.BackgroundColor3 = ColorSystem.Dark(parent.BackgroundColor3, options.Darker and 0.02 or 0)
     container.BorderSizePixel = 0
     container.AutoButtonColor = false
     container.Text = ""
+    container.ClipsDescendants = true
     container.Parent = parent
     
-    Components.AddTooltip(container, options.Tooltip)
+    if options.Tooltip then
+        Components.AddTooltip(container, options.Tooltip)
+    end
     
     -- Background da seleção
     local selectionBg = Instance.new("Frame")
@@ -1024,7 +1559,7 @@ function InputComponents.CreateDropdown(parent, options)
     currentText.Size = UDim2.new(1, -30, 1, 0)
     currentText.Position = UDim2.fromOffset(10, 0)
     currentText.BackgroundTransparency = 1
-    currentText.Text = (options.Name or "Dropdown") .. " - " .. api.Value
+    currentText.Text = options.Name .. " - " .. api.Value
     currentText.TextXAlignment = Enum.TextXAlignment.Left
     currentText.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
     currentText.TextSize = 13
@@ -1043,45 +1578,27 @@ function InputComponents.CreateDropdown(parent, options)
     arrow.Parent = selectionBg
     
     -- Container de opções
-    local optionsContainer
+    local optionsFrame = Instance.new("Frame")
+    optionsFrame.Size = UDim2.new(1, -20, 0, 0)
+    optionsFrame.Position = UDim2.fromOffset(10, 38)
+    optionsFrame.BackgroundTransparency = 1
+    optionsFrame.ClipsDescendants = true
+    optionsFrame.Parent = container
     
-    -- API
-    function api:SetValue(value, silent)
-        if table.find(self.List, value) then
-            self.Value = value
-        else
-            self.Value = self.List[1] or "None"
+    local optionsLayout = Instance.new("UIListLayout")
+    optionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    optionsLayout.Parent = optionsFrame
+    
+    -- Criar opções
+    local function createOptions()
+        for _, child in ipairs(optionsFrame:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
         end
         
-        currentText.Text = (options.Name or "Dropdown") .. " - " .. self.Value
-        self:Collapse()
-        
-        if not silent then
-            self.Callback(self.Value)
-        end
-    end
-    
-    function api:Expand()
-        if self.Expanded then return end
-        self.Expanded = true
-        
-        arrow.Rotation = 270
-        
-        local itemCount = #self.List - 1 -- Excluir item atual
-        container.Size = UDim2.new(1, 0, 0, 40 + itemCount * 28)
-        
-        optionsContainer = Instance.new("Frame")
-        optionsContainer.Size = UDim2.new(1, -20, 0, itemCount * 28)
-        optionsContainer.Position = UDim2.fromOffset(10, 38)
-        optionsContainer.BackgroundTransparency = 1
-        optionsContainer.Parent = container
-        
-        local layout = Instance.new("UIListLayout")
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Parent = optionsContainer
-        
-        for i, item in ipairs(self.List) do
-            if item == self.Value then continue end
+        for i, item in ipairs(api.List) do
+            if item == api.Value then continue end
             
             local option = Instance.new("TextButton")
             option.Size = UDim2.new(1, 0, 0, 28)
@@ -1094,7 +1611,8 @@ function InputComponents.CreateDropdown(parent, options)
             option.TextColor3 = ColorSystem.Dark(theme.Text, 0.2)
             option.TextSize = 13
             option.FontFace = VapeV5.Settings.Fonts.Regular
-            option.Parent = optionsContainer
+            option.LayoutOrder = i
+            option.Parent = optionsFrame
             
             option.MouseEnter:Connect(function()
                 VapeV5.Tween:Create(option, {BackgroundTransparency = 0.5}, 0.1)
@@ -1105,9 +1623,47 @@ function InputComponents.CreateDropdown(parent, options)
             end)
             
             option.MouseButton1Click:Connect(function()
-                self:SetValue(item)
+                api:SetValue(item)
             end)
         end
+    end
+    
+    -- API
+    function api:SetValue(value, silent)
+        if table.find(self.List, value) then
+            self.Value = value
+        elseif #self.List > 0 then
+            self.Value = self.List[1]
+        else
+            self.Value = "None"
+        end
+        
+        currentText.Text = options.Name .. " - " .. self.Value
+        self:Collapse()
+        
+        if not silent then
+            self.Callback(self.Value)
+        end
+    end
+    
+    function api:Expand()
+        if self.Expanded then return end
+        self.Expanded = true
+        
+        createOptions()
+        
+        arrow.Rotation = 270
+        
+        local itemCount = math.max(#self.List - 1, 0)
+        local targetHeight = 40 + (itemCount * 28)
+        
+        VapeV5.Tween:Create(container, {
+            Size = UDim2.new(1, 0, 0, targetHeight)
+        }, 0.2)
+        
+        VapeV5.Tween:Create(optionsFrame, {
+            Size = UDim2.new(1, -20, 0, itemCount * 28)
+        }, 0.2)
     end
     
     function api:Collapse()
@@ -1115,18 +1671,31 @@ function InputComponents.CreateDropdown(parent, options)
         self.Expanded = false
         
         arrow.Rotation = 90
-        container.Size = UDim2.new(1, 0, 0, 40)
         
-        if optionsContainer then
-            optionsContainer:Destroy()
-            optionsContainer = nil
+        VapeV5.Tween:Create(container, {
+            Size = UDim2.new(1, 0, 0, 40)
+        }, 0.2)
+        
+        VapeV5.Tween:Create(optionsFrame, {
+            Size = UDim2.new(1, -20, 0, 0)
+        }, 0.2)
+    end
+    
+    function api:Toggle()
+        if self.Expanded then
+            self:Collapse()
+        else
+            self:Expand()
         end
     end
     
     function api:UpdateList(newList)
         self.List = newList
         if not table.find(self.List, self.Value) then
-            self:SetValue(self.List[1])
+            self:SetValue(self.List[1], true)
+        end
+        if self.Expanded then
+            createOptions()
         end
     end
     
@@ -1135,7 +1704,7 @@ function InputComponents.CreateDropdown(parent, options)
     end
     
     function api:Load(data)
-        if self.Value ~= data.Value then
+        if data and data.Value ~= nil and self.Value ~= data.Value then
             self:SetValue(data.Value, true)
         end
     end
@@ -1143,11 +1712,7 @@ function InputComponents.CreateDropdown(parent, options)
     -- Eventos
     selectionBg.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            if api.Expanded then
-                api:Collapse()
-            else
-                api:Expand()
-            end
+            api:Toggle()
         end
     end)
     
@@ -1169,30 +1734,40 @@ end
 
 -- TextBox
 function InputComponents.CreateTextBox(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "TextBox",
+        Default = "",
+        Placeholder = "Enter text...",
+        Tooltip = nil,
+        Darker = false,
+        Callback = function() end
+    })
+    
     local theme = VapeV5.Settings.Theme
     
     local api = {
         Type = "TextBox",
-        Value = options.Default or "",
-        Callback = options.Callback or function() end,
+        Value = options.Default,
+        Callback = options.Callback,
     }
     
     local container = Instance.new("Frame")
-    container.Name = (options.Name or "TextBox") .. "TextBox"
+    container.Name = options.Name .. "TextBox"
     container.Size = UDim2.new(1, 0, 0, 58)
     container.BackgroundColor3 = ColorSystem.Dark(parent.BackgroundColor3, options.Darker and 0.02 or 0)
     container.BorderSizePixel = 0
     container.Parent = parent
     
-    Components.AddTooltip(container, options.Tooltip)
+    if options.Tooltip then
+        Components.AddTooltip(container, options.Tooltip)
+    end
     
     -- Título
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -20, 0, 20)
     title.Position = UDim2.fromOffset(10, 5)
     title.BackgroundTransparency = 1
-    title.Text = options.Name or "TextBox"
+    title.Text = options.Name
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = theme.Text
     title.TextSize = 12
@@ -1206,6 +1781,7 @@ function InputComponents.CreateTextBox(parent, options)
     inputBg.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
     inputBg.Parent = container
     Components.AddCorner(inputBg, UDim.new(0, 4))
+    Components.AddStroke(inputBg, {Color = ColorSystem.Light(theme.Primary, 0.08)})
     
     -- Input
     local input = Instance.new("TextBox")
@@ -1213,7 +1789,7 @@ function InputComponents.CreateTextBox(parent, options)
     input.Position = UDim2.fromOffset(8, 0)
     input.BackgroundTransparency = 1
     input.Text = api.Value
-    input.PlaceholderText = options.Placeholder or "Enter text..."
+    input.PlaceholderText = options.Placeholder
     input.TextXAlignment = Enum.TextXAlignment.Left
     input.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
     input.PlaceholderColor3 = ColorSystem.Dark(theme.Text, 0.4)
@@ -1224,11 +1800,11 @@ function InputComponents.CreateTextBox(parent, options)
     
     -- API
     function api:SetValue(value, silent)
-        self.Value = value
-        input.Text = value
+        self.Value = value or ""
+        input.Text = self.Value
         
         if not silent then
-            self.Callback(value)
+            self.Callback(self.Value)
         end
     end
     
@@ -1237,13 +1813,18 @@ function InputComponents.CreateTextBox(parent, options)
     end
     
     function api:Load(data)
-        if self.Value ~= data.Value then
+        if data and data.Value ~= nil and self.Value ~= data.Value then
             self:SetValue(data.Value, true)
         end
     end
     
     -- Eventos
+    input.Focused:Connect(function()
+        VapeV5.Tween:Create(inputBg, {BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.08)}, 0.1)
+    end)
+    
     input.FocusLost:Connect(function(enterPressed)
+        VapeV5.Tween:Create(inputBg, {BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)}, 0.1)
         api.Value = input.Text
         api.Callback(api.Value, enterPressed)
     end)
@@ -1258,20 +1839,29 @@ end
 
 -- Color Picker
 function InputComponents.CreateColorPicker(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "Color",
+        DefaultHue = 0.44,
+        DefaultSat = 1,
+        DefaultValue = 1,
+        Tooltip = nil,
+        Darker = false,
+        Callback = function() end
+    })
+    
     local theme = VapeV5.Settings.Theme
     
     local api = {
         Type = "ColorPicker",
-        Hue = options.DefaultHue or 0.44,
-        Sat = options.DefaultSat or 1,
-        Value = options.DefaultValue or 1,
+        Hue = options.DefaultHue,
+        Sat = options.DefaultSat,
+        Value = options.DefaultValue,
         Rainbow = false,
-        Callback = options.Callback or function() end,
+        Callback = options.Callback,
     }
     
     local container = Instance.new("TextButton")
-    container.Name = (options.Name or "ColorPicker") .. "ColorPicker"
+    container.Name = options.Name .. "ColorPicker"
     container.Size = UDim2.new(1, 0, 0, 50)
     container.BackgroundColor3 = ColorSystem.Dark(parent.BackgroundColor3, options.Darker and 0.02 or 0)
     container.BorderSizePixel = 0
@@ -1279,14 +1869,16 @@ function InputComponents.CreateColorPicker(parent, options)
     container.Text = ""
     container.Parent = parent
     
-    Components.AddTooltip(container, options.Tooltip)
+    if options.Tooltip then
+        Components.AddTooltip(container, options.Tooltip)
+    end
     
     -- Título
     local title = Instance.new("TextLabel")
     title.Size = UDim2.fromOffset(100, 20)
     title.Position = UDim2.fromOffset(10, 5)
     title.BackgroundTransparency = 1
-    title.Text = options.Name or "Color"
+    title.Text = options.Name
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
     title.TextSize = 12
@@ -1295,16 +1887,17 @@ function InputComponents.CreateColorPicker(parent, options)
     
     -- Preview de cor
     local preview = Instance.new("Frame")
-    preview.Size = UDim2.fromOffset(16, 16)
-    preview.Position = UDim2.new(1, -26, 0, 8)
+    preview.Size = UDim2.fromOffset(18, 18)
+    preview.Position = UDim2.new(1, -28, 0, 6)
     preview.BackgroundColor3 = Color3.fromHSV(api.Hue, api.Sat, api.Value)
     preview.Parent = container
     Components.AddCorner(preview, UDim.new(0, 4))
+    Components.AddStroke(preview, {Color = Color3.new(1, 1, 1), Thickness = 2})
     
     -- Barra de hue
     local hueBar = Instance.new("Frame")
-    hueBar.Size = UDim2.new(1, -20, 0, 4)
-    hueBar.Position = UDim2.fromOffset(10, 35)
+    hueBar.Size = UDim2.new(1, -20, 0, 6)
+    hueBar.Position = UDim2.fromOffset(10, 32)
     hueBar.BackgroundColor3 = Color3.new(1, 1, 1)
     hueBar.BorderSizePixel = 0
     hueBar.Parent = container
@@ -1334,6 +1927,11 @@ function InputComponents.CreateColorPicker(parent, options)
     knob.BackgroundColor3 = Color3.new(1, 1, 1)
     knob.Parent = knobHolder
     Components.AddCorner(knob, UDim.new(1, 0))
+    
+    local knobStroke = Instance.new("UIStroke")
+    knobStroke.Color = Color3.fromRGB(60, 60, 60)
+    knobStroke.Thickness = 2
+    knobStroke.Parent = knob
     
     -- API
     function api:SetValue(h, s, v, silent)
@@ -1366,8 +1964,10 @@ function InputComponents.CreateColorPicker(parent, options)
     end
     
     function api:Load(data)
-        self.Rainbow = data.Rainbow
-        self:SetValue(data.Hue, data.Sat, data.Value, true)
+        if data then
+            self.Rainbow = data.Rainbow or false
+            self:SetValue(data.Hue, data.Sat, data.Value, true)
+        end
     end
     
     -- Eventos de arraste
@@ -1375,7 +1975,7 @@ function InputComponents.CreateColorPicker(parent, options)
     
     container.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            if input.Position.Y - container.AbsolutePosition.Y > 25 then
+            if input.Position.Y - container.AbsolutePosition.Y > 22 then
                 dragging = true
                 local percent = math.clamp((input.Position.X - hueBar.AbsolutePosition.X) / hueBar.AbsoluteSize.X, 0, 1)
                 api:SetValue(percent)
@@ -1396,36 +1996,54 @@ function InputComponents.CreateColorPicker(parent, options)
         end
     end)
     
+    -- Hover
+    container.MouseEnter:Connect(function()
+        VapeV5.Tween:Create(knob, {Size = UDim2.fromOffset(14, 14)}, 0.1)
+    end)
+    
+    container.MouseLeave:Connect(function()
+        VapeV5.Tween:Create(knob, {Size = UDim2.fromOffset(12, 12)}, 0.1)
+    end)
+    
     api.Object = container
     return api
 end
 
 -- Keybind
 function InputComponents.CreateKeybind(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "Keybind",
+        Default = {},
+        Tooltip = nil,
+        Darker = false,
+        Callback = function() end
+    })
+    
     local theme = VapeV5.Settings.Theme
     
     local api = {
         Type = "Keybind",
-        Bind = options.Default or {},
-        Callback = options.Callback or function() end,
+        Bind = type(options.Default) == "table" and options.Default or {options.Default},
+        Callback = options.Callback,
         Listening = false,
     }
     
     local container = Instance.new("TextButton")
-    container.Name = (options.Name or "Keybind") .. "Keybind"
+    container.Name = options.Name .. "Keybind"
     container.Size = UDim2.new(1, 0, 0, 32)
     container.BackgroundColor3 = ColorSystem.Dark(parent.BackgroundColor3, options.Darker and 0.02 or 0)
     container.BorderSizePixel = 0
     container.AutoButtonColor = false
-    container.Text = "          " .. (options.Name or "Keybind")
+    container.Text = "          " .. options.Name
     container.TextXAlignment = Enum.TextXAlignment.Left
     container.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
     container.TextSize = 14
     container.FontFace = VapeV5.Settings.Fonts.Regular
     container.Parent = parent
     
-    Components.AddTooltip(container, options.Tooltip)
+    if options.Tooltip then
+        Components.AddTooltip(container, options.Tooltip)
+    end
     
     -- Botão de bind
     local bindButton = Instance.new("TextButton")
@@ -1434,7 +2052,7 @@ function InputComponents.CreateKeybind(parent, options)
     bindButton.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.05)
     bindButton.BorderSizePixel = 0
     bindButton.AutoButtonColor = false
-    bindButton.Text = #api.Bind > 0 and table.concat(api.Bind, "+") or "None"
+    bindButton.Text = #api.Bind > 0 and api.Bind[1] or "None"
     bindButton.TextColor3 = ColorSystem.Dark(theme.Text, 0.3)
     bindButton.TextSize = 11
     bindButton.FontFace = VapeV5.Settings.Fonts.Regular
@@ -1443,10 +2061,15 @@ function InputComponents.CreateKeybind(parent, options)
     
     -- API
     function api:SetBind(keys, silent)
+        if type(keys) == "string" then
+            keys = {keys}
+        end
         self.Bind = keys or {}
-        bindButton.Text = #self.Bind > 0 and table.concat(self.Bind, "+"):upper() or "None"
         
-        local size = Utils.GetTextSize(bindButton.Text, 11, VapeV5.Settings.Fonts.Regular)
+        local displayText = #self.Bind > 0 and table.concat(self.Bind, "+"):upper() or "None"
+        bindButton.Text = displayText
+        
+        local size = Utils.GetTextSize(displayText, 11, VapeV5.Settings.Fonts.Regular)
         bindButton.Size = UDim2.fromOffset(math.max(size.X + 16, 40), 22)
         bindButton.Position = UDim2.new(1, -bindButton.Size.X.Offset - 10, 0, 5)
         
@@ -1459,11 +2082,13 @@ function InputComponents.CreateKeybind(parent, options)
         self.Listening = true
         bindButton.Text = "..."
         bindButton.TextColor3 = theme.Accent
+        VapeV5._bindingTarget = self
     end
     
     function api:StopListening(key)
         self.Listening = false
         bindButton.TextColor3 = ColorSystem.Dark(theme.Text, 0.3)
+        VapeV5._bindingTarget = nil
         
         if key then
             self:SetBind({key.Name})
@@ -1475,14 +2100,18 @@ function InputComponents.CreateKeybind(parent, options)
     end
     
     function api:Load(data)
-        self:SetBind(data.Bind, true)
+        if data and data.Bind then
+            self:SetBind(data.Bind, true)
+        end
     end
     
     -- Eventos
     bindButton.MouseButton1Click:Connect(function()
         api:StartListening()
-        VapeV5._bindingTarget = api
     end)
+    
+    -- Atualizar tamanho inicial
+    api:SetBind(api.Bind, true)
     
     api.Object = container
     return api
@@ -1490,16 +2119,22 @@ end
 
 -- Button
 function InputComponents.CreateButton(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "Button",
+        Tooltip = nil,
+        Darker = false,
+        Callback = function() end
+    })
+    
     local theme = VapeV5.Settings.Theme
     
     local api = {
         Type = "Button",
-        Callback = options.Callback or function() end,
+        Callback = options.Callback,
     }
     
     local container = Instance.new("TextButton")
-    container.Name = (options.Name or "Button") .. "Button"
+    container.Name = options.Name .. "Button"
     container.Size = UDim2.new(1, 0, 0, 36)
     container.BackgroundColor3 = ColorSystem.Dark(parent.BackgroundColor3, options.Darker and 0.02 or 0)
     container.BorderSizePixel = 0
@@ -1507,7 +2142,9 @@ function InputComponents.CreateButton(parent, options)
     container.Text = ""
     container.Parent = parent
     
-    Components.AddTooltip(container, options.Tooltip)
+    if options.Tooltip then
+        Components.AddTooltip(container, options.Tooltip)
+    end
     
     -- Botão interno
     local button = Instance.new("Frame")
@@ -1521,7 +2158,7 @@ function InputComponents.CreateButton(parent, options)
     local text = Instance.new("TextLabel")
     text.Size = UDim2.fromScale(1, 1)
     text.BackgroundTransparency = 1
-    text.Text = options.Name or "Button"
+    text.Text = options.Name
     text.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
     text.TextSize = 14
     text.FontFace = VapeV5.Settings.Fonts.Regular
@@ -1541,6 +2178,17 @@ function InputComponents.CreateButton(parent, options)
     end)
     
     container.MouseButton1Click:Connect(function()
+        -- Efeito de click
+        VapeV5.Tween:Create(button, {
+            BackgroundColor3 = theme.Accent
+        }, 0.05)
+        
+        task.delay(0.1, function()
+            VapeV5.Tween:Create(button, {
+                BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.05)
+            }, 0.1)
+        end)
+        
         api.Callback()
     end)
     
@@ -1555,16 +2203,22 @@ VapeV5.Inputs = InputComponents
 -- ═══════════════════════════════════════════════════════════════════
 
 local function CreateModule(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "Module",
+        Tooltip = nil,
+        Bind = {},
+        Callback = function() end
+    })
+    
     local theme = VapeV5.Settings.Theme
     
     local api = {
         Type = "Module",
-        Name = options.Name or "Module",
+        Name = options.Name,
         Enabled = false,
         Options = {},
-        Bind = options.Bind or {},
-        Callback = options.Callback or function() end,
+        Bind = type(options.Bind) == "table" and options.Bind or {options.Bind},
+        Callback = options.Callback,
         _connections = {},
     }
     
@@ -1582,15 +2236,11 @@ local function CreateModule(parent, options)
     container.FontFace = VapeV5.Settings.Fonts.Regular
     container.Parent = parent
     
-    Components.AddTooltip(container, options.Tooltip)
+    if options.Tooltip then
+        Components.AddTooltip(container, options.Tooltip)
+    end
     
-    -- Gradiente (para rainbow)
-    local gradient = Instance.new("UIGradient")
-    gradient.Rotation = 90
-    gradient.Enabled = false
-    gradient.Parent = container
-    
-    -- Botão de expandir
+    -- Botão de expandir (três pontos)
     local dotsButton = Instance.new("TextButton")
     dotsButton.Name = "Dots"
     dotsButton.Size = UDim2.fromOffset(25, 40)
@@ -1646,25 +2296,32 @@ local function CreateModule(parent, options)
     divider.Visible = false
     divider.Parent = container
     
+    -- Estado expandido
+    local expanded = false
+    
     -- API do módulo
     function api:Toggle(silent)
         self.Enabled = not self.Enabled
         
         if self.Enabled then
-            container.BackgroundColor3 = theme.Accent
+            VapeV5.Tween:Create(container, {
+                BackgroundColor3 = theme.Accent
+            }, 0.15)
             container.TextColor3 = ColorSystem.GetTextColor(theme.Accent:ToHSV())
             dots.ImageColor3 = container.TextColor3
             divider.Visible = true
         else
-            container.BackgroundColor3 = theme.Primary
+            VapeV5.Tween:Create(container, {
+                BackgroundColor3 = theme.Primary
+            }, 0.15)
             container.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
             dots.ImageColor3 = ColorSystem.Light(theme.Primary, 0.37)
             divider.Visible = false
             
             -- Limpar conexões
             for _, conn in pairs(self._connections) do
-                if conn.Disconnect then
-                    conn:Disconnect()
+                if conn and conn.Disconnect then
+                    pcall(function() conn:Disconnect() end)
                 end
             end
             table.clear(self._connections)
@@ -1676,6 +2333,9 @@ local function CreateModule(parent, options)
     end
     
     function api:SetBind(keys)
+        if type(keys) == "string" then
+            keys = {keys}
+        end
         self.Bind = keys or {}
         
         if #self.Bind > 0 then
@@ -1690,16 +2350,27 @@ local function CreateModule(parent, options)
     end
     
     function api:ExpandOptions()
-        optionsContainer.Visible = not optionsContainer.Visible
+        expanded = not expanded
+        optionsContainer.Visible = expanded
         
-        if optionsContainer.Visible then
-            local height = optionsLayout.AbsoluteContentSize.Y
-            optionsContainer.Size = UDim2.new(1, 0, 0, height)
+        if expanded then
+            local scale = VapeV5._scale and VapeV5._scale.Scale or 1
+            local height = optionsLayout.AbsoluteContentSize.Y / scale
+            
+            VapeV5.Tween:Create(optionsContainer, {
+                Size = UDim2.new(1, 0, 0, height)
+            }, 0.2)
+        else
+            VapeV5.Tween:Create(optionsContainer, {
+                Size = UDim2.new(1, 0, 0, 0)
+            }, 0.2)
         end
     end
     
     function api:Clean(connection)
-        table.insert(self._connections, connection)
+        if connection then
+            table.insert(self._connections, connection)
+        end
     end
     
     -- Criar componentes de input
@@ -1757,32 +2428,38 @@ local function CreateModule(parent, options)
             label.Size = UDim2.fromScale(1, 1)
             label.Position = UDim2.fromOffset(10, 0)
             label.BackgroundTransparency = 1
-            label.Text = text:upper()
+                        label.Text = text:upper()
             label.TextXAlignment = Enum.TextXAlignment.Left
             label.TextColor3 = ColorSystem.Dark(theme.Text, 0.5)
             label.TextSize = 10
             label.FontFace = VapeV5.Settings.Fonts.Bold
             label.Parent = dividerFrame
         end
+        
+        return dividerFrame
     end
     
-    -- Eventos
+    -- Eventos do módulo
     local hovered = false
     
     container.MouseEnter:Connect(function()
         hovered = true
         if not api.Enabled then
             container.TextColor3 = theme.Text
-            container.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
+            VapeV5.Tween:Create(container, {
+                BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
+            }, 0.1)
         end
         bindLabel.Visible = #api.Bind > 0 or true
     end)
     
     container.MouseLeave:Connect(function()
         hovered = false
-        if not api.Enabled and not optionsContainer.Visible then
+        if not api.Enabled and not expanded then
             container.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
-            container.BackgroundColor3 = theme.Primary
+            VapeV5.Tween:Create(container, {
+                BackgroundColor3 = theme.Primary
+            }, 0.1)
         end
         bindLabel.Visible = #api.Bind > 0
     end)
@@ -1813,8 +2490,14 @@ local function CreateModule(parent, options)
     
     bindLabel.MouseButton1Click:Connect(function()
         VapeV5._bindingTarget = {
-            SetBind = function(_, keys, mouse)
+            SetBind = function(_, keys)
                 api:SetBind(keys)
+            end,
+            StopListening = function(_, key)
+                if key then
+                    api:SetBind({key.Name})
+                end
+                VapeV5._bindingTarget = nil
             end,
             Bind = api.Bind
         }
@@ -1822,11 +2505,16 @@ local function CreateModule(parent, options)
     
     -- Atualizar tamanho quando opções mudam
     optionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        if optionsContainer.Visible then
+        if expanded then
             local scale = VapeV5._scale and VapeV5._scale.Scale or 1
             optionsContainer.Size = UDim2.new(1, 0, 0, optionsLayout.AbsoluteContentSize.Y / scale)
         end
     end)
+    
+    -- Aplicar bind inicial
+    if #api.Bind > 0 then
+        api:SetBind(api.Bind)
+    end
     
     api.Object = container
     api.OptionsContainer = optionsContainer
@@ -1839,12 +2527,18 @@ end
 -- ═══════════════════════════════════════════════════════════════════
 
 local function CreateCategory(parent, options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Name = "Category",
+        Icon = "",
+        IconSize = nil,
+        Position = UDim2.fromOffset(240, 60)
+    })
+    
     local theme = VapeV5.Settings.Theme
     
     local api = {
         Type = "Category",
-        Name = options.Name or "Category",
+        Name = options.Name,
         Expanded = false,
         Modules = {},
     }
@@ -1853,7 +2547,7 @@ local function CreateCategory(parent, options)
     local window = Instance.new("TextButton")
     window.Name = options.Name .. "Category"
     window.Size = UDim2.fromOffset(220, 42)
-    window.Position = options.Position or UDim2.fromOffset(240, 60)
+    window.Position = options.Position
     window.BackgroundColor3 = theme.Primary
     window.BorderSizePixel = 0
     window.AutoButtonColor = false
@@ -1861,23 +2555,45 @@ local function CreateCategory(parent, options)
     window.Text = ""
     window.Parent = parent
     
-    Components.AddBlur(window)
+    Components.AddShadow(window, {Expand = 12, Transparency = 0.7})
     Components.AddCorner(window)
     Components.MakeDraggable(window)
     
-    -- Ícone
-    local icon = Instance.new("ImageLabel")
-    icon.Size = options.IconSize or UDim2.fromOffset(16, 16)
-    icon.Position = UDim2.fromOffset(12, 13)
-    icon.BackgroundTransparency = 1
-    icon.Image = options.Icon or ""
-    icon.ImageColor3 = theme.Text
-    icon.Parent = window
+    -- Ícone (suporta imagem ou emoji)
+    local iconElement
+    local iconOffset = 12
+    
+    if options.Icon and options.Icon ~= "" then
+        if AssetSystem:IsEmoji(options.Icon) then
+            -- É emoji/texto
+            iconElement = Instance.new("TextLabel")
+            iconElement.Size = UDim2.fromOffset(20, 20)
+            iconElement.Position = UDim2.fromOffset(10, 11)
+            iconElement.BackgroundTransparency = 1
+            iconElement.Text = options.Icon
+            iconElement.TextSize = 16
+            iconElement.Parent = window
+            iconOffset = 34
+        else
+            -- É imagem
+            local imageSource = AssetSystem:LoadFromURL(options.Icon)
+            if imageSource and imageSource ~= "" then
+                iconElement = Instance.new("ImageLabel")
+                iconElement.Size = options.IconSize or UDim2.fromOffset(16, 16)
+                iconElement.Position = UDim2.fromOffset(12, 13)
+                iconElement.BackgroundTransparency = 1
+                iconElement.Image = imageSource
+                iconElement.ImageColor3 = theme.Text
+                iconElement.Parent = window
+                iconOffset = 36
+            end
+        end
+    end
     
     -- Título
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, -70, 0, 42)
-    title.Position = UDim2.fromOffset(36, 0)
+    title.Position = UDim2.fromOffset(iconOffset, 0)
     title.BackgroundTransparency = 1
     title.Text = options.Name
     title.TextXAlignment = Enum.TextXAlignment.Left
@@ -1911,7 +2627,8 @@ local function CreateCategory(parent, options)
     modulesContainer.BackgroundTransparency = 1
     modulesContainer.BorderSizePixel = 0
     modulesContainer.ScrollBarThickness = 3
-    modulesContainer.ScrollBarImageTransparency = 0.7
+    modulesContainer.ScrollBarImageColor3 = theme.Accent
+    modulesContainer.ScrollBarImageTransparency = 0.5
     modulesContainer.CanvasSize = UDim2.new()
     modulesContainer.Visible = false
     modulesContainer.Parent = window
@@ -1935,18 +2652,32 @@ local function CreateCategory(parent, options)
         
         modulesContainer.Visible = self.Expanded
         divider.Visible = self.Expanded
-        arrow.Rotation = self.Expanded and 0 or 180
+        
+        VapeV5.Tween:Create(arrow, {
+            Rotation = self.Expanded and 0 or 180
+        }, 0.2)
         
         if self.Expanded then
             local scale = VapeV5._scale and VapeV5._scale.Scale or 1
-            local height = math.min(42 + modulesLayout.AbsoluteContentSize.Y / scale, 600)
-            window.Size = UDim2.fromOffset(220, height)
+            local height = math.min(42 + modulesLayout.AbsoluteContentSize.Y / scale, 500)
+            
+            VapeV5.Tween:Create(window, {
+                Size = UDim2.fromOffset(220, height)
+            }, 0.25, Enum.EasingStyle.Back)
         else
-            window.Size = UDim2.fromOffset(220, 42)
+            VapeV5.Tween:Create(window, {
+                Size = UDim2.fromOffset(220, 42)
+            }, 0.2)
         end
     end
     
     function api:CreateModule(opts)
+        if not opts or not opts.Name then
+            Debug.Error("CreateModule requires a Name")
+            opts = opts or {}
+            opts.Name = opts.Name or "UnnamedModule"
+        end
+        
         local module = CreateModule(modulesContainer, opts)
         self.Modules[opts.Name] = module
         VapeV5._modules[opts.Name] = module
@@ -1961,8 +2692,8 @@ local function CreateCategory(parent, options)
         end)
         
         for i, data in ipairs(sorted) do
-            data.mod.Object.LayoutOrder = i
-            data.mod.OptionsContainer.LayoutOrder = i
+            data.mod.Object.LayoutOrder = i * 2
+            data.mod.OptionsContainer.LayoutOrder = i * 2 + 1
         end
         
         return module
@@ -1985,13 +2716,13 @@ local function CreateCategory(parent, options)
         api:Expand()
     end)
     
-    -- Atualizar tamanho do canvas
+    -- Atualizar tamanho do canvas e janela
     modulesLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         local scale = VapeV5._scale and VapeV5._scale.Scale or 1
         modulesContainer.CanvasSize = UDim2.fromOffset(0, modulesLayout.AbsoluteContentSize.Y / scale)
         
         if api.Expanded then
-            local height = math.min(42 + modulesLayout.AbsoluteContentSize.Y / scale, 600)
+            local height = math.min(42 + modulesLayout.AbsoluteContentSize.Y / scale, 500)
             window.Size = UDim2.fromOffset(220, height)
         end
     end)
@@ -2007,36 +2738,51 @@ end
 -- ═══════════════════════════════════════════════════════════════════
 
 function VapeV5:CreateWindow(options)
-    options = options or {}
+    options = Utils.ValidateOptions(options, {
+        Title = "Vape V5",
+        Subtitle = nil,
+        Logo = nil,
+        Theme = "Dark",
+        AccentColor = nil,
+        Keybind = "RightShift",
+        BlurEnabled = true,
+        ShowWelcome = true
+    })
+    
     local theme = self.Settings.Theme
     
-    -- Aplicar configurações do usuário
-    if options.Theme then
-        if type(options.Theme) == "table" then
-            for k, v in pairs(options.Theme) do
-                theme[k] = v
-            end
-        elseif options.Theme == "Light" then
-            theme.Primary = Color3.fromRGB(240, 240, 240)
-            theme.Secondary = Color3.fromRGB(220, 220, 220)
-            theme.Text = Color3.fromRGB(40, 40, 40)
-            theme.TextDark = Color3.fromRGB(100, 100, 100)
+    -- Aplicar tema pré-definido
+    if type(options.Theme) == "string" and self.Themes[options.Theme] then
+        for k, v in pairs(self.Themes[options.Theme]) do
+            theme[k] = v
+        end
+    elseif type(options.Theme) == "table" then
+        for k, v in pairs(options.Theme) do
+            theme[k] = v
         end
     end
     
+    -- Aplicar cor de destaque
     if options.AccentColor then
         theme.Accent = options.AccentColor
     end
     
+    -- Aplicar keybind
     if options.Keybind then
         self.Settings.Keybind = type(options.Keybind) == "table" and options.Keybind or {options.Keybind}
     end
+    
+    -- Configurar blur
+    self.Settings.General.Blur = options.BlurEnabled
     
     local windowAPI = {
         Categories = {},
         Options = {},
         Visible = true,
     }
+    
+    -- Inicializar sistema de assets
+    AssetSystem:Init()
     
     -- ScreenGui principal
     local gui = Instance.new("ScreenGui")
@@ -2046,7 +2792,6 @@ function VapeV5:CreateWindow(options)
     gui.IgnoreGuiInset = true
     gui.ResetOnSpawn = false
     
-    -- Tentar colocar no CoreGui, senão no PlayerGui
     local success = pcall(function()
         gui.Parent = Services.CoreGui
     end)
@@ -2069,7 +2814,7 @@ function VapeV5:CreateWindow(options)
     scale.Parent = scaledContainer
     self._scale = scale
     
-    -- Atualizar tamanho quando a tela redimensiona
+    -- Atualizar escala quando a tela redimensiona
     gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
         if self.Settings.General.AutoScale then
             scale.Scale = math.max(gui.AbsoluteSize.X / 1920, 0.6)
@@ -2097,8 +2842,9 @@ function VapeV5:CreateWindow(options)
     
     self._clickGui = clickGui
     
-    -- Inicializar notificações
+    -- Inicializar sistemas
     NotificationSystem:Init(scaledContainer)
+    BlurSystem:Init(scaledContainer)
     
     -- Tooltip global
     local tooltip = Instance.new("TextLabel")
@@ -2131,55 +2877,72 @@ function VapeV5:CreateWindow(options)
     mainWindow.Text = ""
     mainWindow.Parent = clickGui
     
-    Components.AddBlur(mainWindow)
+    Components.AddShadow(mainWindow, {Expand = 12, Transparency = 0.7})
     Components.AddCorner(mainWindow)
     Components.MakeDraggable(mainWindow)
     
+    -- Header
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, 0, 0, 36)
+    header.BackgroundTransparency = 1
+    header.Parent = mainWindow
+    
     -- Logo
-    local logo
+    local logoElement
+    local logoWidth = 0
+    
     if options.Logo then
-        if options.Logo:match("^https?://") or options.Logo:match("^rbxassetid://") then
-            logo = Instance.new("ImageLabel")
-            logo.Size = UDim2.fromOffset(80, 24)
-            logo.Position = UDim2.fromOffset(12, 10)
-            logo.BackgroundTransparency = 1
-            logo.Image = options.Logo:match("^https?://") and AssetSystem:LoadFromURL(options.Logo) or options.Logo
-            logo.Parent = mainWindow
+        local logoSource = AssetSystem:LoadFromURL(options.Logo)
+        if logoSource and logoSource ~= "" then
+            logoElement = Instance.new("ImageLabel")
+            logoElement.Size = UDim2.fromOffset(80, 24)
+            logoElement.Position = UDim2.fromOffset(12, 6)
+            logoElement.BackgroundTransparency = 1
+            logoElement.Image = logoSource
+            logoElement.ScaleType = Enum.ScaleType.Fit
+            logoElement.Parent = header
+            
+            -- Manter proporção
+            Components.AddAspectRatio(logoElement, 80/24)
+            logoWidth = 92
         end
-    else
+    end
+    
+    if not logoElement then
         -- Logo texto padrão
-        logo = Instance.new("TextLabel")
-        logo.Size = UDim2.fromOffset(100, 24)
-        logo.Position = UDim2.fromOffset(12, 10)
-        logo.BackgroundTransparency = 1
-        logo.Text = options.Title or "Vape V5"
-        logo.TextXAlignment = Enum.TextXAlignment.Left
-        logo.TextColor3 = theme.Text
-        logo.TextSize = 16
-        logo.FontFace = self.Settings.Fonts.Bold
-        logo.Parent = mainWindow
+        logoElement = Instance.new("TextLabel")
+        logoElement.Size = UDim2.fromOffset(100, 24)
+        logoElement.Position = UDim2.fromOffset(12, 6)
+        logoElement.BackgroundTransparency = 1
+        logoElement.Text = options.Title
+        logoElement.TextXAlignment = Enum.TextXAlignment.Left
+        logoElement.TextColor3 = theme.Text
+        logoElement.TextSize = 16
+        logoElement.FontFace = self.Settings.Fonts.Bold
+        logoElement.Parent = header
+        logoWidth = Utils.GetTextSize(options.Title, 16, self.Settings.Fonts.Bold).X + 20
     end
     
     -- Subtítulo/Versão
     if options.Subtitle then
         local subtitle = Instance.new("TextLabel")
-        subtitle.Size = UDim2.fromOffset(50, 16)
-        subtitle.Position = logo and UDim2.new(0, logo.Size.X.Offset + 14, 0, 12) or UDim2.fromOffset(100, 12)
+        subtitle.Size = UDim2.fromOffset(60, 16)
+        subtitle.Position = UDim2.fromOffset(logoWidth, 10)
         subtitle.BackgroundTransparency = 1
         subtitle.Text = options.Subtitle
         subtitle.TextColor3 = theme.Accent
         subtitle.TextSize = 12
-        subtitle.FontFace = self.Settings.Fonts.Regular
-        subtitle.Parent = mainWindow
+        subtitle.FontFace = self.Settings.Fonts.SemiBold
+        subtitle.Parent = header
     end
     
     -- Botão de configurações
     local settingsButton = Instance.new("TextButton")
     settingsButton.Size = UDim2.fromOffset(30, 30)
-    settingsButton.Position = UDim2.new(1, -35, 0, 5)
+    settingsButton.Position = UDim2.new(1, -35, 0, 3)
     settingsButton.BackgroundTransparency = 1
     settingsButton.Text = ""
-    settingsButton.Parent = mainWindow
+    settingsButton.Parent = header
     
     local settingsIcon = Instance.new("ImageLabel")
     settingsIcon.Size = UDim2.fromOffset(16, 16)
@@ -2190,19 +2953,24 @@ function VapeV5:CreateWindow(options)
     settingsIcon.Parent = settingsButton
     
     settingsButton.MouseEnter:Connect(function()
-        settingsIcon.ImageColor3 = theme.Text
+        VapeV5.Tween:Create(settingsIcon, {ImageColor3 = theme.Text}, 0.1)
     end)
     
     settingsButton.MouseLeave:Connect(function()
-        settingsIcon.ImageColor3 = ColorSystem.Light(theme.Primary, 0.37)
+        VapeV5.Tween:Create(settingsIcon, {ImageColor3 = ColorSystem.Light(theme.Primary, 0.37)}, 0.1)
     end)
     
     -- Container de categorias/tabs
-    local tabsContainer = Instance.new("Frame")
+    local tabsContainer = Instance.new("ScrollingFrame")
     tabsContainer.Name = "Tabs"
     tabsContainer.Size = UDim2.new(1, 0, 1, -42)
     tabsContainer.Position = UDim2.fromOffset(0, 38)
     tabsContainer.BackgroundTransparency = 1
+    tabsContainer.BorderSizePixel = 0
+    tabsContainer.ScrollBarThickness = 2
+    tabsContainer.ScrollBarImageColor3 = theme.Accent
+    tabsContainer.ScrollBarImageTransparency = 0.5
+    tabsContainer.CanvasSize = UDim2.new()
     tabsContainer.Parent = mainWindow
     
     local tabsLayout = Instance.new("UIListLayout")
@@ -2228,7 +2996,7 @@ function VapeV5:CreateWindow(options)
     searchBar.BackgroundColor3 = ColorSystem.Dark(theme.Primary, 0.02)
     searchBar.Parent = clickGui
     
-    Components.AddBlur(searchBar)
+    Components.AddShadow(searchBar, {Expand = 10, Transparency = 0.75})
     Components.AddCorner(searchBar)
     
     local searchIcon = Instance.new("ImageLabel")
@@ -2253,54 +3021,96 @@ function VapeV5:CreateWindow(options)
     searchInput.ClearTextOnFocus = false
     searchInput.Parent = searchBar
     
+    -- Pesquisa de módulos
+    searchInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local searchText = searchInput.Text:lower()
+        
+        for name, module in pairs(self._modules) do
+            if searchText == "" then
+                module.Object.Visible = true
+                module.OptionsContainer.Visible = false
+            else
+                local matches = name:lower():find(searchText, 1, true) ~= nil
+                module.Object.Visible = matches
+                module.OptionsContainer.Visible = false
+            end
+        end
+    end)
+    
     -- ═══════════════════════════════════════════════════════════════
     -- 📁 MÉTODOS DA JANELA
     -- ═══════════════════════════════════════════════════════════════
     
-    -- Criar tab/categoria
-    function windowAPI:CreateTab(tabOptions)
-        tabOptions = tabOptions or {}
+    -- Contador de posição para categorias
+    local categoryPositionX = 240
+    local categoryPositionY = 60
+    
+    -- Criar categoria
+    function windowAPI:CreateCategory(catOptions)
+        catOptions = catOptions or {}
         
-        -- Botão na janela principal
+        local category = CreateCategory(clickGui, {
+            Name = catOptions.Name or "Category",
+            Icon = catOptions.Icon or "",
+            IconSize = catOptions.IconSize,
+            Position = UDim2.fromOffset(categoryPositionX, categoryPositionY),
+        })
+        
+        self.Categories[catOptions.Name] = category
+        
+        -- Atualizar posição para próxima categoria
+        categoryPositionX = categoryPositionX + 230
+        if categoryPositionX > 700 then
+            categoryPositionX = 240
+            categoryPositionY = categoryPositionY + 50
+        end
+        
+        -- Criar botão na janela principal
         local tabButton = Instance.new("TextButton")
-        tabButton.Name = tabOptions.Name .. "Tab"
+        tabButton.Name = catOptions.Name .. "Tab"
         tabButton.Size = UDim2.new(1, 0, 0, 40)
         tabButton.BackgroundColor3 = theme.Primary
         tabButton.BorderSizePixel = 0
         tabButton.AutoButtonColor = false
+        tabButton.Text = ""
         tabButton.Parent = tabsContainer
         
-        -- Ícone (suporta emoji ou imagem)
-        local iconText
-        local iconImage
+        -- Ícone do tab
+        local tabIconOffset = 12
         
-                    if tabOptions.Icon:match("^https?://") or tabOptions.Icon:match("^rbxassetid://") then
-                -- É uma imagem
-                iconImage = Instance.new("ImageLabel")
-                iconImage.Size = tabOptions.IconSize or UDim2.fromOffset(16, 16)
-                iconImage.Position = UDim2.fromOffset(12, 12)
-                iconImage.BackgroundTransparency = 1
-                iconImage.Image = tabOptions.Icon:match("^https?://") and AssetSystem:LoadFromURL(tabOptions.Icon) or tabOptions.Icon
-                iconImage.ImageColor3 = ColorSystem.Dark(theme.Text, 0.16)
-                iconImage.Parent = tabButton
+        if catOptions.Icon and catOptions.Icon ~= "" then
+            if AssetSystem:IsEmoji(catOptions.Icon) then
+                local tabIconText = Instance.new("TextLabel")
+                tabIconText.Size = UDim2.fromOffset(20, 20)
+                tabIconText.Position = UDim2.fromOffset(10, 10)
+                tabIconText.BackgroundTransparency = 1
+                tabIconText.Text = catOptions.Icon
+                tabIconText.TextSize = 16
+                tabIconText.Parent = tabButton
+                tabIconOffset = 34
             else
-                -- É um emoji ou texto
-                iconText = Instance.new("TextLabel")
-                iconText.Size = UDim2.fromOffset(24, 24)
-                iconText.Position = UDim2.fromOffset(10, 8)
-                iconText.BackgroundTransparency = 1
-                iconText.Text = tabOptions.Icon
-                iconText.TextSize = 16
-                iconText.Parent = tabButton
+                local imageSource = AssetSystem:LoadFromURL(catOptions.Icon)
+                if imageSource and imageSource ~= "" then
+                    local tabIconImage = Instance.new("ImageLabel")
+                    tabIconImage.Size = catOptions.IconSize or UDim2.fromOffset(16, 16)
+                    tabIconImage.Position = UDim2.fromOffset(12, 12)
+                    tabIconImage.BackgroundTransparency = 1
+                    tabIconImage.Image = imageSource
+                    tabIconImage.ImageColor3 = ColorSystem.Dark(theme.Text, 0.16)
+                    tabIconImage.Parent = tabButton
+                    tabIconOffset = 36
+                    
+                    category._tabIcon = tabIconImage
+                end
             end
         end
         
         -- Texto do tab
         local tabText = Instance.new("TextLabel")
-        tabText.Size = UDim2.new(1, -80, 1, 0)
-        tabText.Position = UDim2.fromOffset(tabOptions.Icon and 40 or 12, 0)
+        tabText.Size = UDim2.new(1, -tabIconOffset - 30, 1, 0)
+        tabText.Position = UDim2.fromOffset(tabIconOffset, 0)
         tabText.BackgroundTransparency = 1
-        tabText.Text = tabOptions.Name or "Tab"
+        tabText.Text = catOptions.Name
         tabText.TextXAlignment = Enum.TextXAlignment.Left
         tabText.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
         tabText.TextSize = 14
@@ -2316,78 +3126,83 @@ function VapeV5:CreateWindow(options)
         tabArrow.ImageColor3 = ColorSystem.Light(theme.Primary, 0.37)
         tabArrow.Parent = tabButton
         
-        -- Criar categoria associada
-        local category = CreateCategory(clickGui, {
-            Name = tabOptions.Name,
-            Icon = iconImage and iconImage.Image or "",
-            IconSize = tabOptions.IconSize,
-            Position = UDim2.fromOffset(240, 60),
-        })
+        -- Estado do tab
+        local tabEnabled = false
         
-        self.Categories[tabOptions.Name] = category
-        
-        local tabAPI = {
-            Name = tabOptions.Name,
-            Enabled = false,
-            Category = category,
-        }
-        
-        function tabAPI:Toggle()
-            self.Enabled = not self.Enabled
-            category.Object.Visible = self.Enabled
+        local function toggleTab()
+            tabEnabled = not tabEnabled
+            category.Object.Visible = tabEnabled
             
             VapeV5.Tween:Create(tabArrow, {
-                Position = UDim2.new(1, self.Enabled and -14 or -20, 0, 15)
-            }, 0.1)
+                Position = UDim2.new(1, tabEnabled and -14 or -20, 0, 15)
+            }, 0.15)
             
-            if self.Enabled then
+            if tabEnabled then
                 tabText.TextColor3 = theme.Accent
-                if iconImage then iconImage.ImageColor3 = theme.Accent end
-                tabButton.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
+                if category._tabIcon then
+                    category._tabIcon.ImageColor3 = theme.Accent
+                end
+                VapeV5.Tween:Create(tabButton, {
+                    BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
+                }, 0.1)
             else
                 tabText.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
-                if iconImage then iconImage.ImageColor3 = ColorSystem.Dark(theme.Text, 0.16) end
-                tabButton.BackgroundColor3 = theme.Primary
+                if category._tabIcon then
+                    category._tabIcon.ImageColor3 = ColorSystem.Dark(theme.Text, 0.16)
+                end
+                VapeV5.Tween:Create(tabButton, {
+                    BackgroundColor3 = theme.Primary
+                }, 0.1)
             end
         end
         
-        function tabAPI:CreateModule(moduleOptions)
-            return category:CreateModule(moduleOptions)
-        end
-        
-        -- Eventos do botão
+        -- Eventos do tab
         tabButton.MouseEnter:Connect(function()
-            if not tabAPI.Enabled then
+            if not tabEnabled then
                 tabText.TextColor3 = theme.Text
-                if iconImage then iconImage.ImageColor3 = theme.Text end
-                tabButton.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
+                if category._tabIcon then
+                    category._tabIcon.ImageColor3 = theme.Text
+                end
+                VapeV5.Tween:Create(tabButton, {
+                    BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
+                }, 0.1)
             end
         end)
         
         tabButton.MouseLeave:Connect(function()
-            if not tabAPI.Enabled then
+            if not tabEnabled then
                 tabText.TextColor3 = ColorSystem.Dark(theme.Text, 0.16)
-                if iconImage then iconImage.ImageColor3 = ColorSystem.Dark(theme.Text, 0.16) end
-                tabButton.BackgroundColor3 = theme.Primary
+                if category._tabIcon then
+                    category._tabIcon.ImageColor3 = ColorSystem.Dark(theme.Text, 0.16)
+                end
+                VapeV5.Tween:Create(tabButton, {
+                    BackgroundColor3 = theme.Primary
+                }, 0.1)
             end
         end)
         
-        tabButton.MouseButton1Click:Connect(function()
-            tabAPI:Toggle()
-        end)
+        tabButton.MouseButton1Click:Connect(toggleTab)
         
-        tabAPI.Object = tabButton
-        return tabAPI
+        -- API extendida da categoria
+        category.Toggle = toggleTab
+        category.TabButton = tabButton
+        
+        return category
     end
     
-    -- Criar divider na lista de tabs
+    -- WRAPPER: CreateTab = CreateCategory (compatibilidade)
+    function windowAPI:CreateTab(tabOptions)
+        return self:CreateCategory(tabOptions)
+    end
+    
+    -- Criar divider
     function windowAPI:CreateDivider(text)
-        local divider = Instance.new("Frame")
-        divider.Size = UDim2.new(1, 0, 0, text and 28 or 1)
-        divider.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
-        divider.BackgroundTransparency = text and 1 or 0
-        divider.BorderSizePixel = 0
-        divider.Parent = tabsContainer
+        local dividerFrame = Instance.new("Frame")
+        dividerFrame.Size = UDim2.new(1, 0, 0, text and 28 or 1)
+        dividerFrame.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.03)
+        dividerFrame.BackgroundTransparency = text and 1 or 0
+        dividerFrame.BorderSizePixel = 0
+        dividerFrame.Parent = tabsContainer
         
         if text then
             local label = Instance.new("TextLabel")
@@ -2399,56 +3214,68 @@ function VapeV5:CreateWindow(options)
             label.TextColor3 = ColorSystem.Dark(theme.Text, 0.5)
             label.TextSize = 10
             label.FontFace = VapeV5.Settings.Fonts.Bold
-            label.Parent = divider
+            label.Parent = dividerFrame
             
             local line = Instance.new("Frame")
             line.Size = UDim2.new(1, 0, 0, 1)
             line.Position = UDim2.new(0, 0, 1, -1)
             line.BackgroundColor3 = ColorSystem.Light(theme.Primary, 0.05)
             line.BorderSizePixel = 0
-            line.Parent = divider
+            line.Parent = dividerFrame
         end
         
-        return divider
+        return dividerFrame
     end
     
     -- Toggle visibilidade
     function windowAPI:Toggle()
         self.Visible = not self.Visible
         clickGui.Visible = self.Visible
-        VapeV5._tooltip.Visible = false
         
-        -- Esconder/mostrar categorias baseado no estado dos tabs
-        for _, cat in pairs(self.Categories) do
-            -- Manter estado anterior das categorias
+        if self.Visible then
+            BlurSystem:Enable()
+        else
+            BlurSystem:Disable()
+            VapeV5._tooltip.Visible = false
         end
     end
     
     function windowAPI:Show()
         self.Visible = true
         clickGui.Visible = true
+        BlurSystem:Enable()
     end
     
     function windowAPI:Hide()
         self.Visible = false
         clickGui.Visible = false
+        BlurSystem:Disable()
         VapeV5._tooltip.Visible = false
     end
     
-    -- Notificação
-    function windowAPI:Notify(title, message, duration, type)
-        VapeV5.Notify(title, message, duration, type)
+    -- Notificação (wrapper)
+    function windowAPI:Notify(title, message, duration, notifType)
+        VapeV5.Notify(title, message, duration, notifType)
     end
     
-    -- Salvar configurações
+    -- ═══════════════════════════════════════════════════════════════
+    -- 💾 SAVE / LOAD
+    -- ═══════════════════════════════════════════════════════════════
+    
     function windowAPI:Save(profileName)
         profileName = profileName or "default"
+        
         local data = {
+            Version = VapeV5.Version,
             Modules = {},
             Categories = {},
-            Settings = VapeV5.Settings,
+            Settings = {
+                Theme = VapeV5.Settings.Theme,
+                Rainbow = VapeV5.Settings.Rainbow,
+            },
         }
         
+        -- Salvar módulos
         for name, module in pairs(VapeV5._modules) do
             data.Modules[name] = {
                 Enabled = module.Enabled,
@@ -2463,6 +3290,7 @@ function VapeV5:CreateWindow(options)
             end
         end
         
+        -- Salvar categorias
         for name, category in pairs(self.Categories) do
             data.Categories[name] = {
                 Position = {
@@ -2473,44 +3301,53 @@ function VapeV5:CreateWindow(options)
             }
         end
         
+        -- Salvar arquivo
         local success = pcall(function()
-            if not isfolder("VapeV5") then makefolder("VapeV5") end
-            if not isfolder("VapeV5/profiles") then makefolder("VapeV5/profiles") end
-            writefile("VapeV5/profiles/" .. profileName .. "_" .. game.PlaceId .. ".json", 
-                Services.HttpService:JSONEncode(data))
+            Utils.EnsureFolder("VapeV5")
+            Utils.EnsureFolder("VapeV5/profiles")
+            local path = "VapeV5/profiles/" .. profileName .. "_" .. game.PlaceId .. ".json"
+            Utils.SaveJSON(path, data)
         end)
         
         if success then
-            self:Notify("Settings Saved", "Profile '" .. profileName .. "' saved successfully!", 2, "Success")
+            self:Notify("Settings Saved", "Profile '" .. profileName .. "' saved!", 2, "Success")
+        else
+            self:Notify("Save Failed", "Could not save profile", 2, "Error")
         end
         
         return success
     end
     
-    -- Carregar configurações
     function windowAPI:Load(profileName)
         profileName = profileName or "default"
         local path = "VapeV5/profiles/" .. profileName .. "_" .. game.PlaceId .. ".json"
         
         if not Utils.FileExists(path) then
+            Debug.Log("No saved profile found: " .. path)
             return false
         end
         
         local data = Utils.LoadJSON(path)
-        if not data then return false end
+        if not data then
+            Debug.Error("Failed to parse profile: " .. path)
+            return false
+        end
         
         -- Carregar módulos
         for name, moduleData in pairs(data.Modules or {}) do
             local module = VapeV5._modules[name]
             if module then
-                if moduleData.Enabled ~= module.Enabled then
+                -- Carregar estado
+                if moduleData.Enabled ~= nil and moduleData.Enabled ~= module.Enabled then
                     module:Toggle(true)
                 end
                 
+                -- Carregar bind
                 if moduleData.Bind then
                     module:SetBind(moduleData.Bind)
                 end
                 
+                -- Carregar opções
                 for optName, optData in pairs(moduleData.Options or {}) do
                     local option = module.Options[optName]
                     if option and option.Load then
@@ -2520,10 +3357,10 @@ function VapeV5:CreateWindow(options)
             end
         end
         
-        -- Carregar posições das categorias
+        -- Carregar categorias
         for name, catData in pairs(data.Categories or {}) do
             local category = self.Categories[name]
-            if category then
+            if category and catData.Position then
                 category.Object.Position = UDim2.fromOffset(catData.Position.X, catData.Position.Y)
                 if catData.Expanded ~= category.Expanded then
                     category:Expand()
@@ -2531,14 +3368,16 @@ function VapeV5:CreateWindow(options)
             end
         end
         
-        self:Notify("Settings Loaded", "Profile '" .. profileName .. "' loaded!", 2, "Success")
+        Debug.Log("Profile loaded: " .. profileName)
         return true
     end
     
-    -- Destruir a UI
+    -- Destruir
     function windowAPI:Destroy()
         -- Salvar antes de destruir
-        self:Save()
+        pcall(function()
+            self:Save()
+        end)
         
         -- Desativar todos os módulos
         for _, module in pairs(VapeV5._modules) do
@@ -2549,13 +3388,18 @@ function VapeV5:CreateWindow(options)
         
         -- Limpar conexões
         for _, conn in pairs(VapeV5._connections) do
-            if conn.Disconnect then
-                conn:Disconnect()
+            if conn and conn.Disconnect then
+                pcall(function() conn:Disconnect() end)
             end
         end
         
+        -- Limpar blur
+        BlurSystem:Destroy()
+        
         -- Destruir GUI
-        gui:Destroy()
+        if gui then
+            gui:Destroy()
+        end
         
         -- Limpar tabelas
         table.clear(VapeV5._modules)
@@ -2596,7 +3440,6 @@ function VapeV5:CreateWindow(options)
             -- Verificar se está bindando
             if VapeV5._bindingTarget then
                 VapeV5._bindingTarget:StopListening(input.KeyCode)
-                VapeV5._bindingTarget = nil
                 return
             end
             
@@ -2614,7 +3457,7 @@ function VapeV5:CreateWindow(options)
                         VapeV5.Notify(
                             "Module Toggled",
                             module.Name .. " " .. (module.Enabled and "<font color='#5AFF5A'>Enabled</font>" or "<font color='#FF5A5A'>Disabled</font>"),
-                            1,
+                            1.5,
                             module.Enabled and "Success" or "Error"
                         )
                     end
@@ -2624,9 +3467,11 @@ function VapeV5:CreateWindow(options)
     end)
     
     local inputEndConnection = Services.UserInputService.InputEnded:Connect(function(input)
-        local idx = table.find(heldKeys, input.KeyCode.Name)
-        if idx then
-            table.remove(heldKeys, idx)
+        if input.KeyCode ~= Enum.KeyCode.Unknown then
+            local idx = table.find(heldKeys, input.KeyCode.Name)
+            if idx then
+                table.remove(heldKeys, idx)
+            end
         end
     end)
     
@@ -2634,24 +3479,31 @@ function VapeV5:CreateWindow(options)
     table.insert(VapeV5._connections, inputEndConnection)
     
     -- ═══════════════════════════════════════════════════════════════
-    -- 🌈 SISTEMA RAINBOW
+    -- 🌈 SISTEMA RAINBOW (OTIMIZADO)
     -- ═══════════════════════════════════════════════════════════════
     
-    task.spawn(function()
-        while VapeV5._loaded ~= nil do
-            if VapeV5.Settings.Rainbow.Enabled then
-                local hue = (tick() * 0.2 * VapeV5.Settings.Rainbow.Speed) % 1
-                
-                for _, item in ipairs(VapeV5._rainbowTable) do
-                    if item.SetValue then
-                        item:SetValue(ColorSystem.GetRainbow(hue))
-                    end
-                end
+    local rainbowAccum = 0
+    local rainbowRate = 1 / (VapeV5.Settings.Rainbow.UpdateRate or 30)
+    
+    local rainbowConnection = Services.RunService.Heartbeat:Connect(function(dt)
+        if not VapeV5.Settings.Rainbow.Enabled then return end
+        
+        rainbowAccum = rainbowAccum + dt
+        if rainbowAccum < rainbowRate then return end
+        rainbowAccum = rainbowAccum - rainbowRate
+        
+        local hue = (tick() * 0.2 * VapeV5.Settings.Rainbow.Speed) % 1
+        
+        for _, item in ipairs(VapeV5._rainbowTable) do
+            if item and item.SetValue then
+                pcall(function()
+                    item:SetValue(ColorSystem.GetRainbow(hue))
+                end)
             end
-            
-            task.wait(1 / VapeV5.Settings.Rainbow.UpdateRate)
         end
     end)
+    
+    table.insert(VapeV5._connections, rainbowConnection)
     
     -- ═══════════════════════════════════════════════════════════════
     -- 📐 ATUALIZAR TAMANHO DA JANELA PRINCIPAL
@@ -2659,24 +3511,8 @@ function VapeV5:CreateWindow(options)
     
     tabsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         local contentHeight = tabsLayout.AbsoluteContentSize.Y / scale.Scale
-        mainWindow.Size = UDim2.fromOffset(220, 42 + contentHeight)
-    end)
-    
-    -- Pesquisa de módulos
-    searchInput:GetPropertyChangedSignal("Text"):Connect(function()
-        local searchText = searchInput.Text:lower()
-        
-        if searchText == "" then
-            -- Mostrar resultados normais, esconder resultados da pesquisa
-            return
-        end
-        
-        -- Filtrar módulos
-        for name, module in pairs(VapeV5._modules) do
-            if name:lower():find(searchText) then
-                -- Destacar módulo encontrado
-            end
-        end
+        mainWindow.Size = UDim2.fromOffset(220, math.max(42 + contentHeight, 100))
+        tabsContainer.CanvasSize = UDim2.fromOffset(0, contentHeight)
     end)
     
     -- ═══════════════════════════════════════════════════════════════
@@ -2693,11 +3529,11 @@ function VapeV5:CreateWindow(options)
     end)
     
     -- Mostrar notificação de boas-vindas
-    if options.ShowWelcome ~= false then
+    if options.ShowWelcome then
         task.spawn(function()
             task.wait(1)
             VapeV5.Notify(
-                options.Title or "Vape V5",
+                options.Title,
                 "Press <font color='#05C46B'>" .. table.concat(VapeV5.Settings.Keybind, " + "):upper() .. "</font> to toggle GUI",
                 3,
                 "Info"
@@ -2722,6 +3558,9 @@ VapeV5.Themes = {
         Accent = Color3.fromRGB(5, 134, 105),
         Text = Color3.fromRGB(200, 200, 200),
         TextDark = Color3.fromRGB(140, 140, 140),
+        Success = Color3.fromRGB(90, 255, 90),
+        Error = Color3.fromRGB(255, 90, 90),
+        Warning = Color3.fromRGB(255, 170, 0),
     },
     
     Light = {
@@ -2730,6 +3569,9 @@ VapeV5.Themes = {
         Accent = Color3.fromRGB(5, 134, 105),
         Text = Color3.fromRGB(40, 40, 40),
         TextDark = Color3.fromRGB(100, 100, 100),
+        Success = Color3.fromRGB(46, 204, 113),
+        Error = Color3.fromRGB(231, 76, 60),
+        Warning = Color3.fromRGB(241, 196, 15),
     },
     
     Ocean = {
@@ -2738,6 +3580,9 @@ VapeV5.Themes = {
         Accent = Color3.fromRGB(52, 152, 219),
         Text = Color3.fromRGB(200, 210, 220),
         TextDark = Color3.fromRGB(120, 140, 160),
+        Success = Color3.fromRGB(46, 204, 113),
+        Error = Color3.fromRGB(231, 76, 60),
+        Warning = Color3.fromRGB(241, 196, 15),
     },
     
     Purple = {
@@ -2746,6 +3591,9 @@ VapeV5.Themes = {
         Accent = Color3.fromRGB(155, 89, 182),
         Text = Color3.fromRGB(210, 200, 220),
         TextDark = Color3.fromRGB(140, 130, 150),
+        Success = Color3.fromRGB(90, 255, 90),
+        Error = Color3.fromRGB(255, 90, 90),
+        Warning = Color3.fromRGB(255, 170, 0),
     },
     
     Red = {
@@ -2754,6 +3602,9 @@ VapeV5.Themes = {
         Accent = Color3.fromRGB(231, 76, 60),
         Text = Color3.fromRGB(220, 200, 200),
         TextDark = Color3.fromRGB(160, 130, 130),
+        Success = Color3.fromRGB(90, 255, 90),
+        Error = Color3.fromRGB(255, 90, 90),
+        Warning = Color3.fromRGB(255, 170, 0),
     },
     
     Midnight = {
@@ -2762,6 +3613,9 @@ VapeV5.Themes = {
         Accent = Color3.fromRGB(99, 102, 241),
         Text = Color3.fromRGB(200, 200, 210),
         TextDark = Color3.fromRGB(120, 120, 140),
+        Success = Color3.fromRGB(90, 255, 90),
+        Error = Color3.fromRGB(255, 90, 90),
+        Warning = Color3.fromRGB(255, 170, 0),
     },
     
     Forest = {
@@ -2770,31 +3624,41 @@ VapeV5.Themes = {
         Accent = Color3.fromRGB(46, 204, 113),
         Text = Color3.fromRGB(200, 220, 200),
         TextDark = Color3.fromRGB(130, 160, 130),
+        Success = Color3.fromRGB(90, 255, 90),
+        Error = Color3.fromRGB(255, 90, 90),
+        Warning = Color3.fromRGB(255, 170, 0),
+    },
+    
+    Dracula = {
+        Primary = Color3.fromRGB(40, 42, 54),
+        Secondary = Color3.fromRGB(68, 71, 90),
+        Accent = Color3.fromRGB(189, 147, 249),
+        Text = Color3.fromRGB(248, 248, 242),
+        TextDark = Color3.fromRGB(98, 114, 164),
+        Success = Color3.fromRGB(80, 250, 123),
+        Error = Color3.fromRGB(255, 85, 85),
+        Warning = Color3.fromRGB(255, 184, 108),
     },
 }
 
 -- Aplicar tema
 function VapeV5:SetTheme(themeName)
-    local theme = self.Themes[themeName]
-    if theme then
-        for k, v in pairs(theme) do
+    local themeData = self.Themes[themeName]
+    if themeData then
+        for k, v in pairs(themeData) do
             self.Settings.Theme[k] = v
         end
-        -- Atualizar UI existente seria necessário aqui
+        Debug.Log("Theme applied: " .. themeName)
         return true
     end
+    Debug.Warn("Theme not found: " .. tostring(themeName))
     return false
 end
-
--- ═══════════════════════════════════════════════════════════════════
--- 📚 UTILITÁRIOS EXPORTADOS
--- ═══════════════════════════════════════════════════════════════════
-
-VapeV5.Utils = Utils
 
 -- ═══════════════════════════════════════════════════════════════════
 -- 🚀 RETORNAR BIBLIOTECA
 -- ═══════════════════════════════════════════════════════════════════
 
+Debug.Log("VapeV5 UI Library v" .. VapeV5.Version .. " loaded!")
+
 return VapeV5
-            
