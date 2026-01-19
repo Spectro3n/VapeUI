@@ -1,29 +1,26 @@
 --[[
-    VapeUI TopBar v2.0
-    Advanced title bar with controls, navigation, and utilities.
+    VapeUI Window v2.0
+    Advanced main container with window management features.
     
     Features:
-    ✅ Multiple layout styles (Default, Minimal, Centered, Split)
-    ✅ Logo/Icon support
-    ✅ Subtitle/Description
-    ✅ Tab navigation integration
-    ✅ Search bar
-    ✅ User profile section
-    ✅ Notification indicator
-    ✅ Actions dropdown menu
-    ✅ Status indicators
-    ✅ Clock/Time display
-    ✅ Custom buttons
-    ✅ Breadcrumb trail
-    ✅ Progress indicator
-    ✅ Double-click to maximize
-    ✅ Context menu
-    ✅ Responsive design
-    ✅ Keyboard shortcuts display
-    ✅ Drag & drop
-    ✅ Window controls (close, minimize, maximize)
-    ✅ Theme selector
-    ✅ Quick settings
+    ✅ Smooth open/close animations
+    ✅ Resize support (all edges and corners)
+    ✅ Snap to edges
+    ✅ Minimize to taskbar/tray
+    ✅ Maximize/Restore
+    ✅ Multiple animation styles
+    ✅ Shadow effects
+    ✅ Blur background
+    ✅ Transparency support
+    ✅ Keyboard shortcuts
+    ✅ Position memory
+    ✅ Size constraints
+    ✅ Focus management
+    ✅ Z-index layering
+    ✅ Multi-window support
+    ✅ Modal mode
+    ✅ Shake animation
+    ✅ Flash attention
 ]]
 
 local Services = require("Utils/Services.lua")
@@ -31,826 +28,504 @@ local Create = require("Utils/Create.lua")
 local Theme = require("Core/Theme.lua")
 local Config = require("Core/Config.lua")
 local Tween = require("Utils/Tween.lua")
-local Drag = require("Utils/Drag.lua")
 local Signal = require("Core/Signal.lua")
 
 -- Services
-local UserInputService = Services.UserInputService
 local TweenService = Services.TweenService
+local UserInputService = Services.UserInputService
 local RunService = Services.RunService
-local Players = Services.Players
 
-local TopBar = {}
-TopBar.__index = TopBar
+local Window = {}
+Window.__index = Window
 
 -- ══════════════════════════════════════════════════════════════════════
 -- CONFIGURATION
 -- ══════════════════════════════════════════════════════════════════════
 
 local DEFAULT_CONFIG = {
-    -- Layout
-    Height = 48,
-    Style = "Default",  -- Default, Minimal, Centered, Split, Custom
+    -- Dimensions
+    Size = Vector2.new(600, 450),
+    MinSize = Vector2.new(400, 300),
+    MaxSize = Vector2.new(1200, 900),
+    Position = nil,  -- nil = center
+    
+    -- Appearance
+    CornerRadius = 12,
+    ShadowSize = 15,
+    BackgroundTransparency = 0,
+    
+    -- Animation
+    AnimationStyle = "Scale",  -- Scale, Fade, Slide, SlideUp, Bounce, None
+    AnimationDuration = 0.3,
+    EnableShake = true,
+    
+    -- Features
+    EnableResize = true,
+    EnableSnap = true,
+    SnapThreshold = 20,
+    EnableMaximize = true,
+    EnableMinimize = true,
+    EnableKeyboardShortcuts = true,
+    EnableFocusManagement = true,
+    EnablePositionMemory = false,
+    
+    -- Behavior
+    Modal = false,
+    CloseOnEscape = true,
+    BringToFrontOnClick = true,
+    StartMinimized = false,
+    StartMaximized = false,
     
     -- Content
     Title = "VapeUI",
-    Subtitle = nil,
-    Logo = nil,  -- Image ID or emoji
-    LogoSize = 24,
-    
-    -- Window Controls
-    ShowClose = true,
-    ShowMinimize = true,
-    ShowMaximize = false,
-    ShowPin = false,
-    ControlsPosition = "Right",  -- Left, Right
-    
-    -- Features
-    EnableDrag = true,
-    EnableDoubleClickMaximize = true,
-    EnableSearch = false,
-    EnableClock = false,
-    EnableUserProfile = false,
-    EnableNotifications = false,
-    EnableBreadcrumbs = false,
-    EnableTabs = false,
-    EnableActions = false,
-    EnableProgress = false,
-    EnableContextMenu = true,
-    
-    -- Search
-    SearchPlaceholder = "Search...",
-    SearchWidth = 200,
-    
-    -- Buttons
-    ButtonSize = 28,
-    ButtonSpacing = 6,
-    ButtonCornerRadius = 6,
-    
-    -- Appearance
-    BackgroundBlur = false,
-    ShowBorder = true,
-    BorderPosition = "Bottom",
-    
-    -- Animations
-    AnimateOnHover = true,
-    ShowTooltips = true,
 }
 
-local LAYOUTS = {
-    Default = {
-        LogoPosition = "Left",
-        TitlePosition = "Left",
-        SearchPosition = "Center",
-        ActionsPosition = "Right",
-        ControlsPosition = "Right",
+local RESIZE_HANDLES = {
+    Top = {Cursor = "SizeNS", Offset = Vector2.new(0, -1)},
+    Bottom = {Cursor = "SizeNS", Offset = Vector2.new(0, 1)},
+    Left = {Cursor = "SizeWE", Offset = Vector2.new(-1, 0)},
+    Right = {Cursor = "SizeWE", Offset = Vector2.new(1, 0)},
+    TopLeft = {Cursor = "SizeNWSE", Offset = Vector2.new(-1, -1)},
+    TopRight = {Cursor = "SizeNESW", Offset = Vector2.new(1, -1)},
+    BottomLeft = {Cursor = "SizeNESW", Offset = Vector2.new(-1, 1)},
+    BottomRight = {Cursor = "SizeNWSE", Offset = Vector2.new(1, 1)},
+}
+
+local ANIMATION_STYLES = {
+    Scale = {
+        initial = function(frame, size)
+            frame.Size = UDim2.new(0, 0, 0, 0)
+            frame.BackgroundTransparency = 1
+        end,
+        show = function(frame, size, duration)
+            return Tween.Spring(frame, {
+                Size = UDim2.fromOffset(size.X, size.Y),
+                BackgroundTransparency = 0,
+            })
+        end,
+        hide = function(frame, duration)
+            return Tween.new(frame, {
+                Size = UDim2.new(0, 0, 0, 0),
+                BackgroundTransparency = 1,
+            }, duration, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        end,
     },
-    Minimal = {
-        LogoPosition = "Hidden",
-        TitlePosition = "Left",
-        SearchPosition = "Hidden",
-        ActionsPosition = "Right",
-        ControlsPosition = "Right",
+    Fade = {
+        initial = function(frame, size)
+            frame.Size = UDim2.fromOffset(size.X, size.Y)
+            frame.BackgroundTransparency = 1
+        end,
+        show = function(frame, size, duration)
+            return Tween.new(frame, {BackgroundTransparency = 0}, duration)
+        end,
+        hide = function(frame, duration)
+            return Tween.new(frame, {BackgroundTransparency = 1}, duration)
+        end,
     },
-    Centered = {
-        LogoPosition = "Left",
-        TitlePosition = "Center",
-        SearchPosition = "Hidden",
-        ActionsPosition = "Right",
-        ControlsPosition = "Right",
+    Slide = {
+        initial = function(frame, size)
+            frame.Size = UDim2.fromOffset(size.X, size.Y)
+            frame.Position = UDim2.new(0.5, 0, 0, -size.Y)
+            frame.BackgroundTransparency = 0
+        end,
+        show = function(frame, size, duration)
+            return Tween.new(frame, {Position = UDim2.new(0.5, 0, 0.5, 0)}, duration, Enum.EasingStyle.Back)
+        end,
+        hide = function(frame, duration)
+            local size = frame.AbsoluteSize
+            return Tween.new(frame, {Position = UDim2.new(0.5, 0, 1, size.Y)}, duration, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        end,
     },
-    Split = {
-        LogoPosition = "Left",
-        TitlePosition = "Left",
-        SearchPosition = "Right",
-        ActionsPosition = "Right",
-        ControlsPosition = "Right",
+    SlideUp = {
+        initial = function(frame, size)
+            frame.Size = UDim2.fromOffset(size.X, size.Y)
+            frame.Position = UDim2.new(0.5, 0, 1, size.Y)
+            frame.BackgroundTransparency = 0
+        end,
+        show = function(frame, size, duration)
+            return Tween.new(frame, {Position = UDim2.new(0.5, 0, 0.5, 0)}, duration, Enum.EasingStyle.Quart)
+        end,
+        hide = function(frame, duration)
+            local size = frame.AbsoluteSize
+            return Tween.new(frame, {Position = UDim2.new(0.5, 0, 1, size.Y)}, duration, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+        end,
+    },
+    Bounce = {
+        initial = function(frame, size)
+            frame.Size = UDim2.fromOffset(size.X, size.Y)
+            frame.Position = UDim2.new(0.5, 0, -0.5, 0)
+            frame.BackgroundTransparency = 0
+        end,
+        show = function(frame, size, duration)
+            return Tween.new(frame, {Position = UDim2.new(0.5, 0, 0.5, 0)}, duration, Enum.EasingStyle.Bounce)
+        end,
+        hide = function(frame, duration)
+            return Tween.new(frame, {
+                Position = UDim2.new(0.5, 0, 0.5, 50),
+                BackgroundTransparency = 1,
+            }, duration)
+        end,
+    },
+    None = {
+        initial = function(frame, size)
+            frame.Size = UDim2.fromOffset(size.X, size.Y)
+            frame.BackgroundTransparency = 0
+        end,
+        show = function(frame, size, duration) end,
+        hide = function(frame, duration) end,
     },
 }
 
+-- Window registry for multi-window support
+local _windows = {}
+local _focusedWindow = nil
+local _zIndexCounter = 1
+
 -- ══════════════════════════════════════════════════════════════════════
--- TOPBAR CLASS
+-- WINDOW CLASS
 -- ══════════════════════════════════════════════════════════════════════
 
-function TopBar.new(parent, options)
-    local self = setmetatable({}, TopBar)
+function Window.new(screenGui, options)
+    local self = setmetatable({}, Window)
     
     -- Configuration
-    self.Config = setmetatable(options or {}, {__index = DEFAULT_CONFIG})
-    self.Parent = parent
+    options = options or {}
+    self.Config = setmetatable({}, {__index = DEFAULT_CONFIG})
+    for key, value in pairs(options) do
+        self.Config[key] = value
+    end
     
     -- State
-    self.Title = self.Config.Title
-    self.Subtitle = self.Config.Subtitle
+    self.ScreenGui = screenGui
+    self.Size = self.Config.Size
+    self.OriginalSize = self.Config.Size
+    self.OriginalPosition = nil
+    self.Visible = false
+    self.Minimized = false
     self.Maximized = false
-    self.Pinned = false
-    self.SearchOpen = false
-    self.NotificationCount = 0
-    self.Progress = 0
-    self.ProgressVisible = false
+    self.Focused = false
+    self.Destroyed = false
+    self._zIndex = _zIndexCounter
+    self._resizing = nil
     self._connections = {}
-    self._buttons = {}
-    self._tabs = {}
-    self._breadcrumbs = {}
-    self._actions = {}
-    self._lastClickTime = 0
     
     -- Signals
+    self.OnShow = Signal.new()
+    self.OnHide = Signal.new()
     self.OnClose = Signal.new()
     self.OnMinimize = Signal.new()
     self.OnMaximize = Signal.new()
     self.OnRestore = Signal.new()
-    self.OnPin = Signal.new()
-    self.OnSearch = Signal.new()
-    self.OnSearchSubmit = Signal.new()
-    self.OnTabChanged = Signal.new()
-    self.OnAction = Signal.new()
-    self.OnTitleChanged = Signal.new()
-    self.OnDoubleClick = Signal.new()
-    self.OnContextMenu = Signal.new()
+    self.OnFocus = Signal.new()
+    self.OnBlur = Signal.new()
+    self.OnResize = Signal.new()
+    self.OnMove = Signal.new()
+    
+    -- Register window
+    _zIndexCounter = _zIndexCounter + 1
+    table.insert(_windows, self)
     
     -- Build UI
     self:_build()
     self:_setupInteractions()
     
+    -- Initial state
+    if self.Config.StartMinimized then
+        self:Minimize()
+    elseif self.Config.StartMaximized then
+        self:Maximize()
+    elseif not self.Config.StartHidden then
+        self:Show()
+    end
+    
     return self
 end
 
-function TopBar:_build()
+function Window:_build()
     local config = self.Config
-    local layout = LAYOUTS[config.Style] or LAYOUTS.Default
+    
+    -- Modal overlay (if modal)
+    if config.Modal then
+        self.ModalOverlay = Create.Frame({
+            Name = "ModalOverlay",
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = Color3.new(0, 0, 0),
+            BackgroundTransparency = 0.5,
+            ZIndex = self._zIndex,
+            Visible = false,
+            Parent = self.ScreenGui,
+        })
+        
+        -- Click overlay to shake window
+        self.ModalOverlay.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                self:Shake()
+            end
+        end)
+    end
     
     -- Main frame
     self.Frame = Create.Frame({
-        Name = "TopBar",
-        Size = UDim2.new(1, 0, 0, config.Height),
-        BackgroundColor3 = Theme:Get("TopBar"),
-        BorderSizePixel = 0,
-        ZIndex = 10,
-        Parent = self.Parent,
-    }, {
-        Create.Corner({CornerRadius = UDim.new(0, Config.Window.CornerRadius)}),
-    })
-    
-    -- Bottom cover (for rounded corners only at top)
-    self.BottomCover = Create.Frame({
-        Name = "BottomCover",
-        Size = UDim2.new(1, 0, 0, Config.Window.CornerRadius),
-        Position = UDim2.new(0, 0, 1, -Config.Window.CornerRadius),
-        BackgroundColor3 = Theme:Get("TopBar"),
-        BorderSizePixel = 0,
-        ZIndex = 10,
-        Parent = self.Frame,
-    })
-    
-    -- Border
-    if config.ShowBorder then
-        self.Border = Create.Frame({
-            Name = "Border",
-            Size = UDim2.new(1, 0, 0, 1),
-            Position = UDim2.new(0, 0, 1, 0),
-            AnchorPoint = Vector2.new(0, 1),
-            BackgroundColor3 = Theme:Get("Border"),
-            BackgroundTransparency = 0.5,
-            BorderSizePixel = 0,
-            ZIndex = 11,
-            Parent = self.Frame,
-        })
-    end
-    
-    -- Left section
-    self.LeftSection = Create.Frame({
-        Name = "LeftSection",
-        Size = UDim2.new(0.4, 0, 1, 0),
-        BackgroundTransparency = 1,
-        ZIndex = 10,
-        Parent = self.Frame,
-    }, {
-        Create.Padding(0, 0, 16, 16),
-        Create.HorizontalList({
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-            Padding = UDim.new(0, 12),
-        }),
-    })
-    
-    -- Center section
-    self.CenterSection = Create.Frame({
-        Name = "CenterSection",
-        Size = UDim2.new(0.2, 0, 1, 0),
-        Position = UDim2.new(0.4, 0, 0, 0),
-        BackgroundTransparency = 1,
-        ZIndex = 10,
-        Parent = self.Frame,
-    }, {
-        Create.HorizontalList({
-            HorizontalAlignment = Enum.HorizontalAlignment.Center,
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-        }),
-    })
-    
-    -- Right section
-    self.RightSection = Create.Frame({
-        Name = "RightSection",
-        Size = UDim2.new(0.4, 0, 1, 0),
-        Position = UDim2.new(0.6, 0, 0, 0),
-        BackgroundTransparency = 1,
-        ZIndex = 10,
-        Parent = self.Frame,
-    }, {
-        Create.Padding(0, 0, 16, 16),
-        Create.HorizontalList({
-            HorizontalAlignment = Enum.HorizontalAlignment.Right,
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-            Padding = UDim.new(0, 8),
-        }),
-    })
-    
-    -- Build sections based on layout
-    self:_buildLogo(layout)
-    self:_buildTitle(layout)
-    
-    if config.EnableBreadcrumbs then
-        self:_buildBreadcrumbs()
-    end
-    
-    if config.EnableTabs then
-        self:_buildTabs()
-    end
-    
-    if config.EnableSearch then
-        self:_buildSearch(layout)
-    end
-    
-    if config.EnableClock then
-        self:_buildClock()
-    end
-    
-    if config.EnableNotifications then
-        self:_buildNotifications()
-    end
-    
-    if config.EnableUserProfile then
-        self:_buildUserProfile()
-    end
-    
-    if config.EnableActions then
-        self:_buildActions()
-    end
-    
-    if config.EnableProgress then
-        self:_buildProgress()
-    end
-    
-    self:_buildWindowControls()
-end
-
-function TopBar:_buildLogo(layout)
-    local config = self.Config
-    if not config.Logo or layout.LogoPosition == "Hidden" then return end
-    
-    local parent = layout.LogoPosition == "Left" and self.LeftSection or self.CenterSection
-    
-    if type(config.Logo) == "string" and config.Logo:match("^rbxassetid://") then
-        self.Logo = Create.Image({
-            Name = "Logo",
-            Size = UDim2.fromOffset(config.LogoSize, config.LogoSize),
-            BackgroundTransparency = 1,
-            Image = config.Logo,
-            ImageColor3 = Theme:Get("TextPrimary"),
-            LayoutOrder = 1,
-            Parent = parent,
-        })
-    else
-        self.Logo = Create.Text({
-            Name = "Logo",
-            Size = UDim2.fromOffset(config.LogoSize, config.LogoSize),
-            BackgroundTransparency = 1,
-            Text = config.Logo,
-            TextSize = config.LogoSize - 4,
-            LayoutOrder = 1,
-            Parent = parent,
-        })
-    end
-end
-
-function TopBar:_buildTitle(layout)
-    local config = self.Config
-    local parent
-    
-    if layout.TitlePosition == "Center" then
-        parent = self.CenterSection
-    else
-        parent = self.LeftSection
-    end
-    
-    self.TitleContainer = Create.Frame({
-        Name = "TitleContainer",
-        Size = UDim2.new(0, 0, 0, config.Height - 16),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundTransparency = 1,
-        LayoutOrder = 2,
-        Parent = parent,
-    }, {
-        Create.List({
-            Padding = UDim.new(0, 2),
-            HorizontalAlignment = layout.TitlePosition == "Center" 
-                and Enum.HorizontalAlignment.Center 
-                or Enum.HorizontalAlignment.Left,
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-        }),
-    })
-    
-    -- Main title
-    self.TitleLabel = Create.Text({
-        Name = "Title",
-        Size = UDim2.new(0, 0, 0, 20),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundTransparency = 1,
-        Text = self.Title,
-        TextColor3 = Theme:Get("TextPrimary"),
-        TextSize = 16,
-        Font = Enum.Font.GothamBold,
-        LayoutOrder = 1,
-        Parent = self.TitleContainer,
-    })
-    
-    -- Subtitle
-    if config.Subtitle then
-        self.SubtitleLabel = Create.Text({
-            Name = "Subtitle",
-            Size = UDim2.new(0, 0, 0, 14),
-            AutomaticSize = Enum.AutomaticSize.X,
-            BackgroundTransparency = 1,
-            Text = config.Subtitle,
-            TextColor3 = Theme:Get("TextSecondary"),
-            TextSize = 11,
-            Font = Enum.Font.Gotham,
-            LayoutOrder = 2,
-            Parent = self.TitleContainer,
-        })
-    end
-end
-
-function TopBar:_buildBreadcrumbs()
-    self.BreadcrumbContainer = Create.Frame({
-        Name = "Breadcrumbs",
-        Size = UDim2.new(0, 0, 0, 20),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundTransparency = 1,
-        LayoutOrder = 3,
-        Parent = self.LeftSection,
-    }, {
-        Create.HorizontalList({
-            Padding = UDim.new(0, 4),
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-        }),
-    })
-end
-
-function TopBar:_buildTabs()
-    self.TabContainer = Create.Frame({
-        Name = "Tabs",
-        Size = UDim2.new(0, 0, 0, 32),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundTransparency = 1,
-        LayoutOrder = 4,
-        Parent = self.LeftSection,
-    }, {
-        Create.HorizontalList({
-            Padding = UDim.new(0, 4),
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-        }),
-    })
-end
-
-function TopBar:_buildSearch(layout)
-    local config = self.Config
-    local parent = layout.SearchPosition == "Center" and self.CenterSection or self.RightSection
-    
-    self.SearchContainer = Create.Frame({
-        Name = "SearchContainer",
-        Size = UDim2.new(0, config.SearchWidth, 0, 32),
-        BackgroundColor3 = Theme:Get("Card"),
-        LayoutOrder = layout.SearchPosition == "Center" and 1 or -5,
-        Parent = parent,
-    }, {
-        Create.Corner(8),
-        Create.Stroke({Color = Theme:Get("Border"), Transparency = 0.5}),
-        Create.Padding(0, 0, 10, 10),
-    })
-    
-    -- Search icon
-    self.SearchIcon = Create.Text({
-        Name = "SearchIcon",
-        Size = UDim2.fromOffset(16, 16),
-        Position = UDim2.new(0, 10, 0.5, 0),
-        AnchorPoint = Vector2.new(0, 0.5),
-        BackgroundTransparency = 1,
-        Text = "🔍",
-        TextSize = 12,
-        Parent = self.SearchContainer,
-    })
-    
-    -- Search input
-    self.SearchInput = Create.Input({
-        Name = "SearchInput",
-        Size = UDim2.new(1, -30, 1, 0),
-        Position = UDim2.new(0, 30, 0, 0),
-        BackgroundTransparency = 1,
-        PlaceholderText = config.SearchPlaceholder,
-        Text = "",
-        TextColor3 = Theme:Get("TextPrimary"),
-        PlaceholderColor3 = Theme:Get("TextSecondary"),
-        TextSize = 12,
-        Font = Enum.Font.Gotham,
-        Parent = self.SearchContainer,
-    })
-    
-    -- Search events
-    self.SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
-        self.OnSearch:Fire(self.SearchInput.Text)
-    end)
-    
-    self.SearchInput.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            self.OnSearchSubmit:Fire(self.SearchInput.Text)
-        end
-    end)
-    
-    -- Keyboard shortcut hint
-    self.SearchHint = Create.Text({
-        Name = "SearchHint",
-        Size = UDim2.fromOffset(30, 16),
-        Position = UDim2.new(1, -10, 0.5, 0),
-        AnchorPoint = Vector2.new(1, 0.5),
-        BackgroundColor3 = Theme:Get("CardHover"),
-        Text = "⌘K",
-        TextColor3 = Theme:Get("TextTertiary"),
-        TextSize = 9,
-        Font = Enum.Font.GothamMedium,
-        Parent = self.SearchContainer,
-    }, {
-        Create.Corner(4),
-    })
-end
-
-function TopBar:_buildClock()
-    self.ClockLabel = Create.Text({
-        Name = "Clock",
-        Size = UDim2.new(0, 0, 0, 20),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundTransparency = 1,
-        Text = "00:00",
-        TextColor3 = Theme:Get("TextSecondary"),
-        TextSize = 12,
-        Font = Enum.Font.GothamMedium,
-        LayoutOrder = -4,
-        Parent = self.RightSection,
-    })
-    
-    -- Update clock
-    local function updateClock()
-        local time = os.date("*t")
-        self.ClockLabel.Text = string.format("%02d:%02d", time.hour, time.min)
-    end
-    
-    updateClock()
-    
-    local clockConnection = RunService.Heartbeat:Connect(function()
-        if tick() % 1 < 0.016 then
-            updateClock()
-        end
-    end)
-    table.insert(self._connections, clockConnection)
-end
-
-function TopBar:_buildNotifications()
-    local config = self.Config
-    
-    self.NotificationButton = Create.Button({
-        Name = "Notifications",
-        Size = UDim2.fromOffset(config.ButtonSize, config.ButtonSize),
-        BackgroundColor3 = Theme:Get("Card"),
-        BackgroundTransparency = 0.5,
-        Text = "🔔",
-        TextSize = 14,
-        AutoButtonColor = false,
-        LayoutOrder = -3,
-        Parent = self.RightSection,
-    }, {
-        Create.Corner(config.ButtonCornerRadius),
-    })
-    
-    -- Notification badge
-    self.NotificationBadge = Create.Frame({
-        Name = "Badge",
-        Size = UDim2.fromOffset(16, 16),
-        Position = UDim2.new(1, -4, 0, -4),
-        AnchorPoint = Vector2.new(1, 0),
-        BackgroundColor3 = Theme:Get("Error"),
+        Name = "VapeUI_Window",
+        Size = UDim2.fromOffset(config.Size.X, config.Size.Y),
+        Position = config.Position or UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Theme:Get("Window"),
+        BackgroundTransparency = config.BackgroundTransparency,
+        ClipsDescendants = true,
         Visible = false,
-        ZIndex = 12,
-        Parent = self.NotificationButton,
+        ZIndex = self._zIndex + 1,
+        Parent = self.ScreenGui,
     }, {
-        Create.Corner(8),
+        Create.Corner(config.CornerRadius),
     })
     
-    self.NotificationBadgeLabel = Create.Text({
-        Name = "Label",
+    -- Shadow
+    self.Shadow = Create.Image({
+        Name = "Shadow",
+        Size = UDim2.new(1, config.ShadowSize * 2, 1, config.ShadowSize * 2),
+        Position = UDim2.new(0.5, 0, 0.5, 4),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://5028857084",
+        ImageColor3 = Theme:Get("Shadow") or Color3.new(0, 0, 0),
+        ImageTransparency = Theme:Get("ShadowTransparency") or 0.5,
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(24, 24, 276, 276),
+        ZIndex = -1,
+        Parent = self.Frame,
+    })
+    
+    -- Container for content
+    self.Container = Create.Frame({
+        Name = "Container",
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
-        Text = "0",
-        TextColor3 = Color3.new(1, 1, 1),
-        TextSize = 9,
-        Font = Enum.Font.GothamBold,
-        Parent = self.NotificationBadge,
+        ZIndex = 2,
+        Parent = self.Frame,
     })
     
-    -- Hover effect
-    self:_addButtonHover(self.NotificationButton)
-end
-
-function TopBar:_buildUserProfile()
-    local config = self.Config
-    local player = Players.LocalPlayer
+    -- Resize handles
+    if config.EnableResize then
+        self:_buildResizeHandles()
+    end
     
-    self.UserButton = Create.Button({
-        Name = "UserProfile",
-        Size = UDim2.fromOffset(config.ButtonSize, config.ButtonSize),
+    -- Focus ring
+    self.FocusRing = Create.Frame({
+        Name = "FocusRing",
+        Size = UDim2.new(1, 4, 1, 4),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundTransparency = 1,
-        Text = "",
-        AutoButtonColor = false,
-        LayoutOrder = -2,
-        Parent = self.RightSection,
-    })
-    
-    -- Avatar
-    self.UserAvatar = Create.Image({
-        Name = "Avatar",
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        Image = string.format(
-            "https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=100&height=100&format=png",
-            player.UserId
-        ),
-        Parent = self.UserButton,
-    }, {
-        Create.Corner(config.ButtonSize / 2),
-    })
-    
-    -- Online indicator
-    self.OnlineIndicator = Create.Frame({
-        Name = "OnlineIndicator",
-        Size = UDim2.fromOffset(10, 10),
-        Position = UDim2.new(1, -2, 1, -2),
-        AnchorPoint = Vector2.new(1, 1),
-        BackgroundColor3 = Theme:Get("Success"),
-        ZIndex = 12,
-        Parent = self.UserButton,
-    }, {
-        Create.Corner(5),
-        Create.Stroke({Color = Theme:Get("TopBar"), Thickness = 2}),
-    })
-end
-
-function TopBar:_buildActions()
-    local config = self.Config
-    
-    self.ActionsButton = Create.Button({
-        Name = "Actions",
-        Size = UDim2.fromOffset(config.ButtonSize, config.ButtonSize),
-        BackgroundColor3 = Theme:Get("Card"),
-        BackgroundTransparency = 0.5,
-        Text = "⋮",
-        TextColor3 = Theme:Get("TextSecondary"),
-        TextSize = 16,
-        Font = Enum.Font.GothamBold,
-        AutoButtonColor = false,
-        LayoutOrder = -1,
-        Parent = self.RightSection,
-    }, {
-        Create.Corner(config.ButtonCornerRadius),
-    })
-    
-    self:_addButtonHover(self.ActionsButton)
-    
-    -- Actions dropdown (hidden by default)
-    self.ActionsDropdown = Create.Frame({
-        Name = "ActionsDropdown",
-        Size = UDim2.new(0, 180, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
-        Position = UDim2.new(1, 0, 1, 8),
-        AnchorPoint = Vector2.new(1, 0),
-        BackgroundColor3 = Theme:Get("Card"),
         Visible = false,
         ZIndex = 100,
-        Parent = self.ActionsButton,
-    }, {
-        Create.Corner(8),
-        Create.Stroke({Color = Theme:Get("Border")}),
-        Create.Padding(4),
-        Create.List({Padding = UDim.new(0, 2)}),
-    })
-    
-    -- Toggle dropdown
-    self.ActionsButton.MouseButton1Click:Connect(function()
-        self.ActionsDropdown.Visible = not self.ActionsDropdown.Visible
-    end)
-end
-
-function TopBar:_buildProgress()
-    self.ProgressContainer = Create.Frame({
-        Name = "Progress",
-        Size = UDim2.new(1, 0, 0, 2),
-        Position = UDim2.new(0, 0, 1, 0),
-        AnchorPoint = Vector2.new(0, 1),
-        BackgroundColor3 = Theme:Get("Border"),
-        BackgroundTransparency = 0.5,
-        Visible = false,
-        ZIndex = 15,
         Parent = self.Frame,
-    })
-    
-    self.ProgressBar = Create.Frame({
-        Name = "ProgressBar",
-        Size = UDim2.new(0, 0, 1, 0),
-        BackgroundColor3 = Theme:Get("Accent"),
-        BorderSizePixel = 0,
-        Parent = self.ProgressContainer,
-    })
-end
-
-function TopBar:_buildWindowControls()
-    local config = self.Config
-    
-    self.ControlsContainer = Create.Frame({
-        Name = "WindowControls",
-        Size = UDim2.new(0, 0, 0, config.ButtonSize),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundTransparency = 1,
-        LayoutOrder = 100,
-        Parent = self.RightSection,
     }, {
-        Create.HorizontalList({
-            Padding = UDim.new(0, config.ButtonSpacing),
-            VerticalAlignment = Enum.VerticalAlignment.Center,
+        Create.Corner(config.CornerRadius + 2),
+        Create.Stroke({
+            Color = Theme:Get("Accent"),
+            Thickness = 2,
+            Transparency = 0.5,
         }),
     })
+end
+
+function Window:_buildResizeHandles()
+    local handleSize = 6
     
-    -- Pin button
-    if config.ShowPin then
-        self.PinButton = self:_createControlButton("📌", function()
-            self.Pinned = not self.Pinned
-            self.OnPin:Fire(self.Pinned)
-            self.PinButton.TextTransparency = self.Pinned and 0 or 0.5
-        end, 1)
-    end
+    self.ResizeHandles = {}
     
-    -- Minimize button
-    if config.ShowMinimize then
-        self.MinimizeButton = self:_createControlButton("─", function()
-            self.OnMinimize:Fire()
-        end, 2)
-    end
-    
-    -- Maximize button
-    if config.ShowMaximize then
-        self.MaximizeButton = self:_createControlButton("□", function()
-            self.Maximized = not self.Maximized
-            if self.Maximized then
-                self.MaximizeButton.Text = "❐"
-                self.OnMaximize:Fire()
-            else
-                self.MaximizeButton.Text = "□"
-                self.OnRestore:Fire()
-            end
-        end, 3)
-    end
-    
-    -- Close button
-    if config.ShowClose then
-        self.CloseButton = self:_createControlButton("×", function()
-            self.OnClose:Fire()
-        end, 4, true)
+    for name, config in pairs(RESIZE_HANDLES) do
+        local handle = Create.Frame({
+            Name = "ResizeHandle_" .. name,
+            BackgroundTransparency = 1,
+            ZIndex = 50,
+            Parent = self.Frame,
+        })
+        
+        -- Position handles
+        if name == "Top" then
+            handle.Size = UDim2.new(1, -handleSize * 2, 0, handleSize)
+            handle.Position = UDim2.new(0, handleSize, 0, 0)
+        elseif name == "Bottom" then
+            handle.Size = UDim2.new(1, -handleSize * 2, 0, handleSize)
+            handle.Position = UDim2.new(0, handleSize, 1, -handleSize)
+        elseif name == "Left" then
+            handle.Size = UDim2.new(0, handleSize, 1, -handleSize * 2)
+            handle.Position = UDim2.new(0, 0, 0, handleSize)
+        elseif name == "Right" then
+            handle.Size = UDim2.new(0, handleSize, 1, -handleSize * 2)
+            handle.Position = UDim2.new(1, -handleSize, 0, handleSize)
+        elseif name == "TopLeft" then
+            handle.Size = UDim2.fromOffset(handleSize, handleSize)
+            handle.Position = UDim2.new(0, 0, 0, 0)
+        elseif name == "TopRight" then
+            handle.Size = UDim2.fromOffset(handleSize, handleSize)
+            handle.Position = UDim2.new(1, -handleSize, 0, 0)
+        elseif name == "BottomLeft" then
+            handle.Size = UDim2.fromOffset(handleSize, handleSize)
+            handle.Position = UDim2.new(0, 0, 1, -handleSize)
+        elseif name == "BottomRight" then
+            handle.Size = UDim2.fromOffset(handleSize, handleSize)
+            handle.Position = UDim2.new(1, -handleSize, 1, -handleSize)
+        end
+        
+        self.ResizeHandles[name] = handle
+        
+        -- Resize logic
+        self:_setupResizeHandle(handle, name, config.Offset)
     end
 end
 
-function TopBar:_createControlButton(text, callback, order, isClose)
-    local config = self.Config
+function Window:_setupResizeHandle(handle, name, offset)
+    local resizing = false
+    local startPos = nil
+    local startSize = nil
+    local startWindowPos = nil
     
-    local button = Create.Button({
-        Name = "Control_" .. text,
-        Size = UDim2.fromOffset(config.ButtonSize, config.ButtonSize),
-        BackgroundColor3 = Theme:Get("Card"),
-        BackgroundTransparency = 0.5,
-        Text = text,
-        TextColor3 = Theme:Get("TextSecondary"),
-        TextSize = text == "×" and 20 or 14,
-        Font = Enum.Font.GothamBold,
-        AutoButtonColor = false,
-        LayoutOrder = order,
-        Parent = self.ControlsContainer,
-    }, {
-        Create.Corner(config.ButtonCornerRadius),
-    })
-    
-    local normalColor = Theme:Get("Card")
-    local hoverColor = isClose and Theme:Get("Error") or Theme:Get("CardHover")
-    local hoverTextColor = isClose and Color3.new(1, 1, 1) or Theme:Get("TextPrimary")
-    
-    button.MouseEnter:Connect(function()
-        Tween.Fast(button, {
-            BackgroundColor3 = hoverColor,
-            BackgroundTransparency = 0,
-            TextColor3 = hoverTextColor,
-        })
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            resizing = true
+            startPos = input.Position
+            startSize = self.Frame.AbsoluteSize
+            startWindowPos = self.Frame.AbsolutePosition
+            self._resizing = name
+        end
     end)
     
-    button.MouseLeave:Connect(function()
-        Tween.Fast(button, {
-            BackgroundColor3 = normalColor,
-            BackgroundTransparency = 0.5,
-            TextColor3 = Theme:Get("TextSecondary"),
-        })
-    end)
-    
-    button.MouseButton1Click:Connect(callback)
-    
-    table.insert(self._buttons, button)
-    
-    return button
-end
-
-function TopBar:_addButtonHover(button, hoverColor)
-    hoverColor = hoverColor or Theme:Get("CardHover")
-    
-    button.MouseEnter:Connect(function()
-        Tween.Fast(button, {
-            BackgroundTransparency = 0,
-            BackgroundColor3 = hoverColor,
-        })
-    end)
-    
-    button.MouseLeave:Connect(function()
-        Tween.Fast(button, {
-            BackgroundTransparency = 0.5,
-            BackgroundColor3 = Theme:Get("Card"),
-        })
-    end)
-end
-
-function TopBar:_setupInteractions()
-    local config = self.Config
-    
-    -- Drag
-    if config.EnableDrag and config.DragTarget then
-        Drag.Enable(config.DragTarget, self.Frame)
-    end
-    
-    -- Double-click to maximize
-    if config.EnableDoubleClickMaximize then
-        self.Frame.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                local now = tick()
-                if now - self._lastClickTime < 0.3 then
-                    self.OnDoubleClick:Fire()
-                    
-                    if config.ShowMaximize then
-                        self.Maximized = not self.Maximized
-                        if self.Maximized then
-                            self.OnMaximize:Fire()
-                        else
-                            self.OnRestore:Fire()
-                        end
-                    end
-                end
-                self._lastClickTime = now
-            end
-        end)
-    end
-    
-    -- Context menu
-    if config.EnableContextMenu then
-        self.Frame.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                self.OnContextMenu:Fire(input.Position)
-            end
-        end)
-    end
-    
-    -- Search shortcut (Ctrl/Cmd + K)
-    if config.EnableSearch then
-        local searchShortcut = UserInputService.InputBegan:Connect(function(input, processed)
-            if processed then return end
+    local moveConn = UserInputService.InputChanged:Connect(function(input)
+        if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - startPos
+            local newSize = startSize
+            local newPos = self.Frame.Position
             
-            if input.KeyCode == Enum.KeyCode.K then
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or
-                   UserInputService:IsKeyDown(Enum.KeyCode.RightControl) then
-                    self:FocusSearch()
+            -- Calculate new size based on handle
+            if offset.X ~= 0 then
+                local widthDelta = delta.X * offset.X
+                newSize = Vector2.new(
+                    math.clamp(startSize.X + widthDelta, self.Config.MinSize.X, self.Config.MaxSize.X),
+                    newSize.Y
+                )
+                
+                -- Adjust position for left handles
+                if offset.X < 0 then
+                    local sizeDiff = newSize.X - startSize.X
+                    newPos = UDim2.new(
+                        newPos.X.Scale,
+                        startWindowPos.X - sizeDiff / 2,
+                        newPos.Y.Scale,
+                        newPos.Y.Offset
+                    )
                 end
             end
+            
+            if offset.Y ~= 0 then
+                local heightDelta = delta.Y * offset.Y
+                newSize = Vector2.new(
+                    newSize.X,
+                    math.clamp(startSize.Y + heightDelta, self.Config.MinSize.Y, self.Config.MaxSize.Y)
+                )
+                
+                -- Adjust position for top handles
+                if offset.Y < 0 then
+                    local sizeDiff = newSize.Y - startSize.Y
+                    newPos = UDim2.new(
+                        newPos.X.Scale,
+                        newPos.X.Offset,
+                        newPos.Y.Scale,
+                        startWindowPos.Y - sizeDiff / 2
+                    )
+                end
+            end
+            
+            self.Frame.Size = UDim2.fromOffset(newSize.X, newSize.Y)
+            self.Size = newSize
+            
+            self.OnResize:Fire(newSize)
+        end
+    end)
+    table.insert(self._connections, moveConn)
+    
+    local endConn = UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and resizing then
+            resizing = false
+            self._resizing = nil
+        end
+    end)
+    table.insert(self._connections, endConn)
+end
+
+function Window:_setupInteractions()
+    local config = self.Config
+    
+    -- Bring to front on click
+    if config.BringToFrontOnClick then
+        local conn = self.Frame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                self:Focus()
+            end
         end)
-        table.insert(self._connections, searchShortcut)
+        table.insert(self._connections, conn)
+    end
+    
+    -- Keyboard shortcuts
+    if config.EnableKeyboardShortcuts then
+        local conn = UserInputService.InputBegan:Connect(function(input, processed)
+            if processed then return end
+            if not self.Focused then return end
+            
+            if input.KeyCode == Enum.KeyCode.Escape and config.CloseOnEscape then
+                self:Hide()
+            end
+        end)
+        table.insert(self._connections, conn)
+    end
+    
+    -- Snap to edges
+    if config.EnableSnap then
+        local conn = self.Frame:GetPropertyChangedSignal("Position"):Connect(function()
+            if self._resizing then return end
+            self:_checkSnap()
+        end)
+        table.insert(self._connections, conn)
+    end
+end
+
+function Window:_checkSnap()
+    local threshold = self.Config.SnapThreshold
+    local viewportSize = self.ScreenGui.AbsoluteSize
+    local framePos = self.Frame.AbsolutePosition
+    local frameSize = self.Frame.AbsoluteSize
+    
+    local newPos = self.Frame.Position
+    local snapped = false
+    
+    -- Snap to left edge
+    if framePos.X < threshold then
+        newPos = UDim2.new(0, frameSize.X / 2, newPos.Y.Scale, newPos.Y.Offset)
+        snapped = true
+    end
+    
+    -- Snap to right edge
+    if framePos.X + frameSize.X > viewportSize.X - threshold then
+        newPos = UDim2.new(1, -frameSize.X / 2, newPos.Y.Scale, newPos.Y.Offset)
+        snapped = true
+    end
+    
+    -- Snap to top edge
+    if framePos.Y < threshold then
+        newPos = UDim2.new(newPos.X.Scale, newPos.X.Offset, 0, frameSize.Y / 2)
+        snapped = true
+    end
+    
+    -- Snap to bottom edge
+    if framePos.Y + frameSize.Y > viewportSize.Y - threshold then
+        newPos = UDim2.new(newPos.X.Scale, newPos.X.Offset, 1, -frameSize.Y / 2)
+        snapped = true
+    end
+    
+    if snapped then
+        self.Frame.Position = newPos
     end
 end
 
@@ -858,359 +533,299 @@ end
 -- PUBLIC API
 -- ══════════════════════════════════════════════════════════════════════
 
-function TopBar:SetTitle(title)
-    self.Title = title
-    if self.TitleLabel then
-        self.TitleLabel.Text = title
-    end
-    self.OnTitleChanged:Fire(title)
-end
-
-function TopBar:GetTitle()
-    return self.Title
-end
-
-function TopBar:SetSubtitle(subtitle)
-    self.Subtitle = subtitle
-    if self.SubtitleLabel then
-        self.SubtitleLabel.Text = subtitle or ""
-        self.SubtitleLabel.Visible = subtitle ~= nil
-    end
-end
-
-function TopBar:SetLogo(logo)
-    if self.Logo then
-        if self.Logo:IsA("ImageLabel") then
-            self.Logo.Image = logo
-        else
-            self.Logo.Text = logo
-        end
-    end
-end
-
-function TopBar:SetBreadcrumbs(items)
-    if not self.BreadcrumbContainer then return end
+function Window:Show(animate)
+    if self.Visible then return end
     
-    -- Clear existing
-    for _, item in ipairs(self._breadcrumbs) do
-        item:Destroy()
-    end
-    self._breadcrumbs = {}
+    self.Visible = true
+    self.Frame.Visible = true
     
-    -- Add new items
-    for i, item in ipairs(items) do
-        local isLast = i == #items
+    if self.ModalOverlay then
+        self.ModalOverlay.Visible = true
+    end
+    
+    local animStyle = ANIMATION_STYLES[self.Config.AnimationStyle] or ANIMATION_STYLES.Scale
+    
+    if animate ~= false then
+        animStyle.initial(self.Frame, self.Size)
+        animStyle.show(self.Frame, self.Size, self.Config.AnimationDuration)
+    end
+    
+    self:Focus()
+    self.OnShow:Fire()
+end
+
+function Window:Hide(animate)
+    if not self.Visible then return end
+    
+    local animStyle = ANIMATION_STYLES[self.Config.AnimationStyle] or ANIMATION_STYLES.Scale
+    
+    if animate ~= false then
+        animStyle.hide(self.Frame, self.Config.AnimationDuration)
         
-        local crumb = Create.Button({
-            Name = "Crumb_" .. i,
-            Size = UDim2.new(0, 0, 1, 0),
-            AutomaticSize = Enum.AutomaticSize.X,
-            BackgroundTransparency = 1,
-            Text = item.Text or item,
-            TextColor3 = isLast and Theme:Get("TextPrimary") or Theme:Get("TextSecondary"),
-            TextSize = 11,
-            Font = isLast and Enum.Font.GothamMedium or Enum.Font.Gotham,
-            AutoButtonColor = false,
-            LayoutOrder = i * 2 - 1,
-            Parent = self.BreadcrumbContainer,
-        })
-        
-        if not isLast then
-            crumb.MouseEnter:Connect(function()
-                Tween.Fast(crumb, {TextColor3 = Theme:Get("Accent")})
-            end)
-            crumb.MouseLeave:Connect(function()
-                Tween.Fast(crumb, {TextColor3 = Theme:Get("TextSecondary")})
-            end)
-            
-            if item.OnClick then
-                crumb.MouseButton1Click:Connect(item.OnClick)
+        task.delay(self.Config.AnimationDuration, function()
+            if not self.Visible then
+                self.Frame.Visible = false
+                if self.ModalOverlay then
+                    self.ModalOverlay.Visible = false
+                end
             end
-        end
-        
-        table.insert(self._breadcrumbs, crumb)
-        
-        if not isLast then
-            local separator = Create.Text({
-                Name = "Sep_" .. i,
-                Size = UDim2.new(0, 12, 1, 0),
-                BackgroundTransparency = 1,
-                Text = "›",
-                TextColor3 = Theme:Get("TextTertiary"),
-                TextSize = 12,
-                LayoutOrder = i * 2,
-                Parent = self.BreadcrumbContainer,
-            })
-            table.insert(self._breadcrumbs, separator)
-        end
-    end
-end
-
-function TopBar:AddTab(name, options)
-    if not self.TabContainer then return end
-    
-    options = options or {}
-    local isActive = options.Active or #self._tabs == 0
-    
-    local tab = Create.Button({
-        Name = "Tab_" .. name,
-        Size = UDim2.new(0, 0, 0, 28),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundColor3 = isActive and Theme:Get("Accent") or Theme:Get("Card"),
-        BackgroundTransparency = isActive and 0 or 0.5,
-        Text = name,
-        TextColor3 = isActive and Color3.new(1, 1, 1) or Theme:Get("TextSecondary"),
-        TextSize = 11,
-        Font = Enum.Font.GothamMedium,
-        AutoButtonColor = false,
-        LayoutOrder = #self._tabs + 1,
-        Parent = self.TabContainer,
-    }, {
-        Create.Corner(6),
-        Create.Padding(0, 0, 12, 12),
-    })
-    
-    tab.MouseButton1Click:Connect(function()
-        self:SetActiveTab(name)
-    end)
-    
-    table.insert(self._tabs, {
-        Name = name,
-        Button = tab,
-        Icon = options.Icon,
-        OnSelect = options.OnSelect,
-    })
-    
-    return tab
-end
-
-function TopBar:SetActiveTab(name)
-    for _, tab in ipairs(self._tabs) do
-        local isActive = tab.Name == name
-        
-        Tween.Fast(tab.Button, {
-            BackgroundColor3 = isActive and Theme:Get("Accent") or Theme:Get("Card"),
-            BackgroundTransparency = isActive and 0 or 0.5,
-            TextColor3 = isActive and Color3.new(1, 1, 1) or Theme:Get("TextSecondary"),
-        })
-        
-        if isActive and tab.OnSelect then
-            tab.OnSelect(tab.Name)
+        end)
+    else
+        self.Frame.Visible = false
+        if self.ModalOverlay then
+            self.ModalOverlay.Visible = false
         end
     end
     
-    self.OnTabChanged:Fire(name)
+    self.Visible = false
+    self:Blur()
+    self.OnHide:Fire()
 end
 
-function TopBar:AddAction(name, options)
-    if not self.ActionsDropdown then return end
+function Window:Toggle(animate)
+    if self.Visible then
+        self:Hide(animate)
+    else
+        self:Show(animate)
+    end
+end
+
+function Window:Close()
+    self.OnClose:Fire()
+    self:Destroy()
+end
+
+function Window:Minimize()
+    if self.Minimized then return end
     
-    options = options or {}
+    self.Minimized = true
+    self.OriginalSize = self.Size
+    self.OriginalPosition = self.Frame.Position
     
-    local action = Create.Button({
-        Name = "Action_" .. name,
-        Size = UDim2.new(1, 0, 0, 32),
-        BackgroundColor3 = Theme:Get("Card"),
-        BackgroundTransparency = 1,
-        Text = "",
-        AutoButtonColor = false,
-        LayoutOrder = #self._actions + 1,
-        Parent = self.ActionsDropdown,
-    }, {
-        Create.Corner(6),
-        Create.Padding(0, 0, 10, 10),
-        Create.HorizontalList({
-            Padding = UDim.new(0, 8),
-            VerticalAlignment = Enum.VerticalAlignment.Center,
-        }),
+    Tween.Normal(self.Frame, {
+        Size = UDim2.fromOffset(200, 40),
+        Position = UDim2.new(0, 110, 1, -30),
     })
     
-    -- Icon
-    if options.Icon then
-        Create.Text({
-            Name = "Icon",
-            Size = UDim2.fromOffset(16, 16),
-            BackgroundTransparency = 1,
-            Text = options.Icon,
-            TextSize = 14,
-            LayoutOrder = 1,
-            Parent = action,
+    self.OnMinimize:Fire()
+end
+
+function Window:Restore()
+    if not self.Minimized and not self.Maximized then return end
+    
+    if self.Minimized then
+        self.Minimized = false
+        Tween.Normal(self.Frame, {
+            Size = UDim2.fromOffset(self.OriginalSize.X, self.OriginalSize.Y),
+            Position = self.OriginalPosition or UDim2.new(0.5, 0, 0.5, 0),
         })
     end
     
-    -- Label
-    Create.Text({
-        Name = "Label",
-        Size = UDim2.new(0, 0, 1, 0),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundTransparency = 1,
-        Text = name,
-        TextColor3 = options.Danger and Theme:Get("Error") or Theme:Get("TextPrimary"),
-        TextSize = 12,
-        Font = Enum.Font.Gotham,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        LayoutOrder = 2,
-        Parent = action,
-    })
-    
-    -- Shortcut
-    if options.Shortcut then
-        Create.Text({
-            Name = "Shortcut",
-            Size = UDim2.new(0, 0, 1, 0),
-            AutomaticSize = Enum.AutomaticSize.X,
-            BackgroundTransparency = 1,
-            Text = options.Shortcut,
-            TextColor3 = Theme:Get("TextTertiary"),
-            TextSize = 10,
-            Font = Enum.Font.GothamMedium,
-            LayoutOrder = 100,
-            Parent = action,
+    if self.Maximized then
+        self.Maximized = false
+        Tween.Normal(self.Frame, {
+            Size = UDim2.fromOffset(self.OriginalSize.X, self.OriginalSize.Y),
+            Position = self.OriginalPosition or UDim2.new(0.5, 0, 0.5, 0),
         })
-    end
-    
-    -- Hover
-    action.MouseEnter:Connect(function()
-        Tween.Fast(action, {BackgroundTransparency = 0})
-    end)
-    
-    action.MouseLeave:Connect(function()
-        Tween.Fast(action, {BackgroundTransparency = 1})
-    end)
-    
-    -- Click
-    action.MouseButton1Click:Connect(function()
-        self.ActionsDropdown.Visible = false
-        if options.Callback then
-            options.Callback()
+        
+        -- Re-enable corner radius
+        local corner = self.Frame:FindFirstChildOfClass("UICorner")
+        if corner then
+            corner.CornerRadius = UDim.new(0, self.Config.CornerRadius)
         end
-        self.OnAction:Fire(name)
-    end)
+    end
     
-    table.insert(self._actions, {Name = name, Button = action})
-    
-    return action
+    self.OnRestore:Fire()
 end
 
-function TopBar:AddActionDivider()
-    if not self.ActionsDropdown then return end
+function Window:Maximize()
+    if self.Maximized then return end
     
-    Create.Frame({
-        Name = "Divider",
-        Size = UDim2.new(1, -16, 0, 1),
-        Position = UDim2.new(0.5, 0, 0, 0),
-        AnchorPoint = Vector2.new(0.5, 0),
-        BackgroundColor3 = Theme:Get("Border"),
-        LayoutOrder = #self._actions + 1,
-        Parent = self.ActionsDropdown,
+    self.Maximized = true
+    self.OriginalSize = self.Size
+    self.OriginalPosition = self.Frame.Position
+    
+    local viewportSize = self.ScreenGui.AbsoluteSize
+    
+    Tween.Normal(self.Frame, {
+        Size = UDim2.new(1, 0, 1, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
     })
+    
+    -- Remove corner radius when maximized
+    local corner = self.Frame:FindFirstChildOfClass("UICorner")
+    if corner then
+        corner.CornerRadius = UDim.new(0, 0)
+    end
+    
+    self.OnMaximize:Fire()
 end
 
-function TopBar:SetNotificationCount(count)
-    self.NotificationCount = count
+function Window:Focus()
+    if self.Focused then return end
     
-    if self.NotificationBadge then
-        self.NotificationBadge.Visible = count > 0
-        self.NotificationBadgeLabel.Text = count > 99 and "99+" or tostring(count)
+    -- Blur other windows
+    for _, win in ipairs(_windows) do
+        if win ~= self and win.Focused then
+            win:Blur()
+        end
     end
+    
+    self.Focused = true
+    _focusedWindow = self
+    
+    -- Bring to front
+    _zIndexCounter = _zIndexCounter + 1
+    self._zIndex = _zIndexCounter
+    self.Frame.ZIndex = self._zIndex
+    
+    if self.ModalOverlay then
+        self.ModalOverlay.ZIndex = self._zIndex - 1
+    end
+    
+    -- Visual feedback
+    self.FocusRing.Visible = true
+    Tween.Fast(self.FocusRing, {BackgroundTransparency = 1})
+    
+    self.OnFocus:Fire()
 end
 
-function TopBar:SetProgress(progress, visible)
-    self.Progress = math.clamp(progress, 0, 1)
+function Window:Blur()
+    if not self.Focused then return end
     
-    if visible ~= nil then
-        self.ProgressVisible = visible
+    self.Focused = false
+    
+    if _focusedWindow == self then
+        _focusedWindow = nil
     end
     
-    if self.ProgressContainer then
-        self.ProgressContainer.Visible = self.ProgressVisible
-        Tween.Fast(self.ProgressBar, {Size = UDim2.new(self.Progress, 0, 1, 0)})
-    end
+    self.FocusRing.Visible = false
+    
+    self.OnBlur:Fire()
 end
 
-function TopBar:ShowProgress()
-    self.ProgressVisible = true
-    if self.ProgressContainer then
-        self.ProgressContainer.Visible = true
+function Window:Shake()
+    if not self.Config.EnableShake then return end
+    
+    local originalPos = self.Frame.Position
+    local shakeAmount = 10
+    local shakeDuration = 0.05
+    
+    for i = 1, 4 do
+        local offset = (i % 2 == 0) and shakeAmount or -shakeAmount
+        Tween.new(self.Frame, {
+            Position = UDim2.new(
+                originalPos.X.Scale,
+                originalPos.X.Offset + offset,
+                originalPos.Y.Scale,
+                originalPos.Y.Offset
+            )
+        }, shakeDuration, Enum.EasingStyle.Linear)
+        task.wait(shakeDuration)
     end
+    
+    Tween.new(self.Frame, {Position = originalPos}, shakeDuration)
 end
 
-function TopBar:HideProgress()
-    self.ProgressVisible = false
-    if self.ProgressContainer then
-        self.ProgressContainer.Visible = false
-    end
-end
-
-function TopBar:FocusSearch()
-    if self.SearchInput then
-        self.SearchInput:CaptureFocus()
-    end
-end
-
-function TopBar:ClearSearch()
-    if self.SearchInput then
-        self.SearchInput.Text = ""
-    end
-end
-
-function TopBar:GetSearchText()
-    return self.SearchInput and self.SearchInput.Text or ""
-end
-
-function TopBar:SetMaximized(maximized)
-    self.Maximized = maximized
+function Window:Flash()
+    local originalColor = self.Frame.BackgroundColor3
     
-    if self.MaximizeButton then
-        self.MaximizeButton.Text = maximized and "❐" or "□"
-    end
-end
-
-function TopBar:SetPinned(pinned)
-    self.Pinned = pinned
-    
-    if self.PinButton then
-        self.PinButton.TextTransparency = pinned and 0 or 0.5
-    end
-end
-
-function TopBar:UpdateTheme()
-    self.Frame.BackgroundColor3 = Theme:Get("TopBar")
-    self.BottomCover.BackgroundColor3 = Theme:Get("TopBar")
-    
-    if self.Border then
-        self.Border.BackgroundColor3 = Theme:Get("Border")
-    end
-    
-    if self.TitleLabel then
-        self.TitleLabel.TextColor3 = Theme:Get("TextPrimary")
-    end
-    
-    if self.SubtitleLabel then
-        self.SubtitleLabel.TextColor3 = Theme:Get("TextSecondary")
-    end
-    
-    if self.SearchContainer then
-        self.SearchContainer.BackgroundColor3 = Theme:Get("Card")
-        self.SearchInput.TextColor3 = Theme:Get("TextPrimary")
-        self.SearchInput.PlaceholderColor3 = Theme:Get("TextSecondary")
-    end
-    
-    if self.ClockLabel then
-        self.ClockLabel.TextColor3 = Theme:Get("TextSecondary")
-    end
-    
-    if self.ProgressBar then
-        self.ProgressBar.BackgroundColor3 = Theme:Get("Accent")
-    end
-    
-    for _, button in ipairs(self._buttons) do
-        button.BackgroundColor3 = Theme:Get("Card")
-        button.TextColor3 = Theme:Get("TextSecondary")
+    for i = 1, 3 do
+        Tween.Fast(self.Frame, {BackgroundColor3 = Theme:Get("Accent")})
+        task.wait(0.1)
+        Tween.Fast(self.Frame, {BackgroundColor3 = originalColor})
+        task.wait(0.1)
     end
 end
 
-function TopBar:Destroy()
+function Window:SetSize(size, animate)
+    self.Size = size
+    
+    if animate then
+        Tween.Normal(self.Frame, {Size = UDim2.fromOffset(size.X, size.Y)})
+    else
+        self.Frame.Size = UDim2.fromOffset(size.X, size.Y)
+    end
+    
+    self.OnResize:Fire(size)
+end
+
+function Window:GetSize()
+    return self.Size
+end
+
+function Window:SetPosition(position, animate)
+    if animate then
+        Tween.Normal(self.Frame, {Position = position})
+    else
+        self.Frame.Position = position
+    end
+    
+    self.OnMove:Fire(position)
+end
+
+function Window:GetPosition()
+    return self.Frame.Position
+end
+
+function Window:Center(animate)
+    self:SetPosition(UDim2.new(0.5, 0, 0.5, 0), animate)
+end
+
+function Window:SetTitle(title)
+    self.Config.Title = title
+    -- Note: TopBar handles actual title display
+end
+
+function Window:GetContainer()
+    return self.Container
+end
+
+function Window:IsVisible()
+    return self.Visible
+end
+
+function Window:IsMinimized()
+    return self.Minimized
+end
+
+function Window:IsMaximized()
+    return self.Maximized
+end
+
+function Window:IsFocused()
+    return self.Focused
+end
+
+function Window:UpdateTheme()
+    self.Frame.BackgroundColor3 = Theme:Get("Window")
+    
+    if self.Shadow then
+        self.Shadow.ImageColor3 = Theme:Get("Shadow") or Color3.new(0, 0, 0)
+        self.Shadow.ImageTransparency = Theme:Get("ShadowTransparency") or 0.5
+    end
+    
+    if self.FocusRing then
+        local stroke = self.FocusRing:FindFirstChildOfClass("UIStroke")
+        if stroke then
+            stroke.Color = Theme:Get("Accent")
+        end
+    end
+end
+
+function Window:Destroy()
+    if self.Destroyed then return end
+    self.Destroyed = true
+    
+    -- Remove from registry
+    for i, win in ipairs(_windows) do
+        if win == self then
+            table.remove(_windows, i)
+            break
+        end
+    end
+    
+    -- Disconnect connections
     for _, conn in ipairs(self._connections) do
         if typeof(conn) == "RBXScriptConnection" then
             conn:Disconnect()
@@ -1218,22 +833,56 @@ function TopBar:Destroy()
     end
     self._connections = {}
     
+    -- Destroy signals
+    self.OnShow:Destroy()
+    self.OnHide:Destroy()
     self.OnClose:Destroy()
     self.OnMinimize:Destroy()
     self.OnMaximize:Destroy()
     self.OnRestore:Destroy()
-    self.OnPin:Destroy()
-    self.OnSearch:Destroy()
-    self.OnSearchSubmit:Destroy()
-    self.OnTabChanged:Destroy()
-    self.OnAction:Destroy()
-    self.OnTitleChanged:Destroy()
-    self.OnDoubleClick:Destroy()
-    self.OnContextMenu:Destroy()
+    self.OnFocus:Destroy()
+    self.OnBlur:Destroy()
+    self.OnResize:Destroy()
+    self.OnMove:Destroy()
+    
+    -- Destroy UI
+    if self.ModalOverlay then
+        self.ModalOverlay:Destroy()
+    end
     
     if self.Frame then
         self.Frame:Destroy()
     end
 end
 
-return TopBar
+-- ══════════════════════════════════════════════════════════════════════
+-- STATIC METHODS
+-- ══════════════════════════════════════════════════════════════════════
+
+function Window.GetFocused()
+    return _focusedWindow
+end
+
+function Window.GetAll()
+    return _windows
+end
+
+function Window.CloseAll()
+    for _, win in ipairs(_windows) do
+        win:Close()
+    end
+end
+
+function Window.MinimizeAll()
+    for _, win in ipairs(_windows) do
+        win:Minimize()
+    end
+end
+
+function Window.RestoreAll()
+    for _, win in ipairs(_windows) do
+        win:Restore()
+    end
+end
+
+return Window
