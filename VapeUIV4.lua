@@ -141,17 +141,35 @@ local getfontsize = function(text, size, font)
 end
 
 local function addBlur(parent, notif)
-	local blur = Instance.new('ImageLabel')
-	blur.Name = 'Blur'
-	blur.Size = UDim2.new(1, 89, 1, 52)
-	blur.Position = UDim2.fromOffset(-48, -31)
-	blur.BackgroundTransparency = 1
-	blur.Image = getcustomasset('newvape/assets/new/'..(notif and 'blurnotif' or 'blur')..'.png')
-	blur.ScaleType = Enum.ScaleType.Slice
-	blur.SliceCenter = Rect.new(52, 31, 261, 502)
-	blur.Parent = parent
-
-	return blur
+    local container = Instance.new('Frame')
+    container.Name = 'Blur'
+    container.Size = UDim2.new(1, 0, 1, 0)
+    container.BackgroundTransparency = 1
+    container.ZIndex = parent.ZIndex - 1
+    container.Parent = parent
+    
+    local layers = {
+        {size = 16, transparency = 0.85},
+        {size = 10, transparency = 0.75},
+        {size = 4, transparency = 0.6}
+    }
+    
+    for i, layer in ipairs(layers) do
+        local shadow = Instance.new('Frame')
+        shadow.Size = UDim2.new(1, layer.size, 1, layer.size)
+        shadow.Position = UDim2.fromOffset(-layer.size/2, -layer.size/2)
+        shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        shadow.BackgroundTransparency = layer.transparency
+        shadow.BorderSizePixel = 0
+        shadow.ZIndex = container.ZIndex - i
+        shadow.Parent = container
+        
+        local corner = Instance.new('UICorner')
+        corner.CornerRadius = UDim.new(0, notif and 14 or 10)
+        corner.Parent = shadow
+    end
+    
+    return container
 end
 
 local function addCorner(parent, radius)
@@ -311,26 +329,41 @@ local function createMobileButton(buttonapi, position)
 end
 
 local function downloadFile(path, func)
-	if not isfile(path) then
-		createDownloader(path)
-		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
-		end)
-		if not suc or res == '404: Not Found' then
-			error(res)
-		end
-		if path:find('.lua') then
-			res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
-		end
-		writefile(path, res)
-	end
-	return (func or readfile)(path)
+    if not isfile(path) then
+        local suc, res = pcall(function()
+            return game:HttpGet('https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+        end)
+        if not suc or res == '404: Not Found' then
+            warn('Erro ao baixar: '..path)
+            return ''
+        end
+        if path:find('.lua') then
+            res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
+        end
+        writefile(path, res)
+    end
+    return (func or readfile)(path)
 end
 
-getcustomasset = not inputService.TouchEnabled and assetfunction and function(path)
-	return downloadFile(path, assetfunction)
-end or function(path)
-	return getcustomassets[path] or ''
+-- Função getcustomasset simplificada com fallback
+getcustomasset = function(path)
+    -- Primeiro tenta usar asset nativo
+    if nativeAssets[path] then
+        return nativeAssets[path]
+    end
+    
+    -- Tenta usar assetfunction se existir
+    if assetfunction then
+        local suc, res = pcall(function()
+            return downloadFile(path, assetfunction)
+        end)
+        if suc and res and res ~= '' then
+            return res
+        end
+    end
+    
+    -- Fallback para asset vazio
+    return ''
 end
 
 local function getTableSize(tab)
