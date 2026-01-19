@@ -141,35 +141,21 @@ local getfontsize = function(text, size, font)
 end
 
 local function addBlur(parent, notif)
-    local container = Instance.new('Frame')
-    container.Name = 'Blur'
-    container.Size = UDim2.new(1, 0, 1, 0)
-    container.BackgroundTransparency = 1
-    container.ZIndex = parent.ZIndex - 1
-    container.Parent = parent
+    local blur = Instance.new('Frame')
+    blur.Name = 'Blur'
+    blur.Size = UDim2.new(1, 20, 1, 20)
+    blur.Position = UDim2.fromOffset(-10, -10)
+    blur.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    blur.BackgroundTransparency = 0.5
+    blur.BorderSizePixel = 0
+    blur.ZIndex = -1
+    blur.Parent = parent
     
-    local layers = {
-        {size = 16, transparency = 0.85},
-        {size = 10, transparency = 0.75},
-        {size = 4, transparency = 0.6}
-    }
+    local corner = Instance.new('UICorner')
+    corner.CornerRadius = UDim.new(0, notif and 12 or 8)
+    corner.Parent = blur
     
-    for i, layer in ipairs(layers) do
-        local shadow = Instance.new('Frame')
-        shadow.Size = UDim2.new(1, layer.size, 1, layer.size)
-        shadow.Position = UDim2.fromOffset(-layer.size/2, -layer.size/2)
-        shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        shadow.BackgroundTransparency = layer.transparency
-        shadow.BorderSizePixel = 0
-        shadow.ZIndex = container.ZIndex - i
-        shadow.Parent = container
-        
-        local corner = Instance.new('UICorner')
-        corner.CornerRadius = UDim.new(0, notif and 14 or 10)
-        corner.Parent = shadow
-    end
-    
-    return container
+    return blur
 end
 
 local function addCorner(parent, radius)
