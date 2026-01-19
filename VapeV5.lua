@@ -3425,10 +3425,9 @@ function VapeV5:CreateWindow(options)
     
     -- Verifica combinação de teclas
     local function checkKeybind(keys, pressedKey)
-        -- Normaliza antes de verificar
-        keys = normalizeKeybind(keys)
-        
-        if #keys == 0 then return false end
+    keys = normalizeKeybind(keys)
+    return table.find(keys, pressedKey) ~= nil
+end
         
         if table.find(keys, pressedKey) then
             for _, key in ipairs(keys) do
@@ -3444,7 +3443,8 @@ function VapeV5:CreateWindow(options)
     
     -- Input handler
     local inputConnection = Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
+        -- gameProcessed relaxed to avoid blocking menu toggle
+    -- if gameProcessed then return end
         
         -- Só processa teclas válidas
         if not input.KeyCode or input.KeyCode == Enum.KeyCode.Unknown then
@@ -3463,7 +3463,7 @@ function VapeV5:CreateWindow(options)
         end
         
         -- Toggle GUI
-        if VapeV5.Settings and checkKeybind(VapeV5.Settings.Keybind, keyName) then
+        if VapeV5.Settings and checkKeybind(windowAPI.Settings.Keybind, keyName) then
             if windowAPI and type(windowAPI.Toggle) == "function" then
                 local success, err = pcall(function()
                     windowAPI:Toggle()
