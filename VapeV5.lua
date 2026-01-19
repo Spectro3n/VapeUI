@@ -1,43 +1,3 @@
---[[
-    ██╗   ██╗ █████╗ ██████╗ ███████╗    ██╗   ██╗███████╗
-    ██║   ██║██╔══██╗██╔══██╗██╔════╝    ██║   ██║██╔════╝
-    ██║   ██║███████║██████╔╝█████╗      ██║   ██║███████╗
-    ╚██╗ ██╔╝██╔══██║██╔═══╝ ██╔══╝      ╚██╗ ██╔╝╚════██║
-     ╚████╔╝ ██║  ██║██║     ███████╗     ╚████╔╝ ███████║
-      ╚═══╝  ╚═╝  ╚═╝╚═╝     ╚══════╝      ╚═══╝  ╚══════╝
-    
-    Vape V5 UI Library - Ultimate Adaptive UI Framework
-    Version: 5.1.0 (Patched & Enhanced)
-    
-    🎮 COMO USAR:
-    
-    local VapeUI = loadstring(game:HttpGet("SUA_URL_AQUI"))()
-    
-    local Window = VapeUI:CreateWindow({
-        Title = "Meu Menu",
-        Subtitle = "v1.0",
-        Logo = "https://i.imgur.com/XXXXX.png", -- Suporta Imgur, Discord, rbxassetid, etc
-        Theme = "Dark", -- Dark, Light, Ocean, Purple, Red, Midnight, Forest
-        Keybind = "RightShift",
-        BlurEnabled = true -- Novo: blur profissional
-    })
-    
-    -- AMBOS FUNCIONAM AGORA:
-    local Tab = Window:CreateTab({Name = "Combat", Icon = "⚔️"})
-    local Tab2 = Window:CreateCategory({Name = "Render", Icon = "rbxassetid://14368350193"})
-    
-    local Module = Tab:CreateModule({
-        Name = "Kill Aura",
-        Callback = function(enabled)
-            print("Kill Aura:", enabled)
-        end
-    })
-    
-    -- NOTIFICAÇÕES - AMBOS ESTILOS FUNCIONAM:
-    VapeUI.Notify("Título", "Mensagem", 3, "Success")
-    VapeUI:Notify("Título", "Mensagem", 3, "Info")
-]]
-
 -- ═══════════════════════════════════════════════════════════════════
 -- 📦 CONFIGURAÇÃO PRINCIPAL
 -- ═══════════════════════════════════════════════════════════════════
@@ -2779,6 +2739,7 @@ function VapeV5:CreateWindow(options)
         Categories = {},
         Options = {},
         Visible = true,
+        Settings = VapeV5.Settings, -- ← ADICIONE ESTA LINHA (referência para compatibilidade)
     }
     
     -- Inicializar sistema de assets
@@ -3409,12 +3370,12 @@ function VapeV5:CreateWindow(options)
         VapeV5._loaded = false
     end
     
-    -- ═══════════════════════════════════════════════════════════════
-    -- ⌨️ SISTEMA DE KEYBINDS (ROBUSTO)
-    -- ═══════════════════════════════════════════════════════════════
-    
+    -- ═══════════════════════════════════════════════════════════════════
+    -- ⌨️ SISTEMA DE KEYBINDS (CORRIGIDO)
+    -- ═══════════════════════════════════════════════════════════════════
+
     local heldKeys = {}
-    
+
     -- Normaliza keybind para sempre ser tabela
     local function normalizeKeybind(keybind)
         if type(keybind) ~= "table" then
@@ -3422,48 +3383,67 @@ function VapeV5:CreateWindow(options)
         end
         return keybind
     end
-    
-    -- Verifica combinação de teclas
+
+    -- Verifica combinação de teclas (FUNÇÃO CORRIGIDA)
     local function checkKeybind(keys, pressedKey)
-    keys = normalizeKeybind(keys)
-    return table.find(keys, pressedKey) ~= nil
-end
-        
-        if table.find(keys, pressedKey) then
+        keys = normalizeKeybind(keys)
+
+        -- Verifica se a tecla pressionada está na lista
+        if not table.find(keys, pressedKey) then
+            return false
+        end
+
+        -- Para combinações (ex: Ctrl+Shift+K), verifica se todas estão pressionadas
+        if #keys > 1 then
             for _, key in ipairs(keys) do
                 if not table.find(heldKeys, key) then
                     return false
                 end
             end
-            return true
         end
-        
-        return false
+
+        return true
     end
-    
-    -- Input handler
+
+    -- Input handler (tecla pressionada)
     local inputConnection = Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        -- gameProcessed relaxed to avoid blocking menu toggle
-    -- if gameProcessed then return end
-        
+        -- Ignora se estiver digitando em TextBox
+        if gameProcessed and not VapeV5._bindingTarget then 
+            -- Permite toggle mesmo com gameProcessed para keybind da UI
+            if input.KeyCode and input.KeyCode ~= Enum.KeyCode.Unknown then
+                local keyName = input.KeyCode.Name
+                -- Só processa toggle da UI mesmo com gameProcessed
+                if checkKeybind(VapeV5.Settings.Keybind, keyName) then
+                    if windowAPI and type(windowAPI.Toggle) == "function" then
+                        pcall(function() windowAPI:Toggle() end)
+                    end
+                end
+            end
+            return 
+        end
+
         -- Só processa teclas válidas
         if not input.KeyCode or input.KeyCode == Enum.KeyCode.Unknown then
             return
         end
-        
+
         local keyName = input.KeyCode.Name
-        table.insert(heldKeys, keyName)
-        
-        -- Verificar se está bindando
+
+        -- Adiciona à lista de teclas pressionadas (evita duplicatas)
+        if not table.find(heldKeys, keyName) then
+            table.insert(heldKeys, keyName)
+        end
+
+        -- Verificar se está bindando uma nova tecla
         if VapeV5._bindingTarget then
             pcall(function()
                 VapeV5._bindingTarget:StopListening(input.KeyCode)
             end)
             return
         end
-        
-        -- Toggle GUI
-        if VapeV5.Settings and checkKeybind(windowAPI.Settings.Keybind, keyName) then
+
+        -- Toggle GUI (CORRIGIDO: usa VapeV5.Settings.Keybind)
+        if checkKeybind(VapeV5.Settings.Keybind, keyName) then
             if windowAPI and type(windowAPI.Toggle) == "function" then
                 local success, err = pcall(function()
                     windowAPI:Toggle()
@@ -3471,35 +3451,20 @@ end
                 if not success then
                     warn("[VapeV5] Toggle error:", err)
                 end
-            else
-                -- Fallback: tenta Windows registrados
-                pcall(function()
-                    if VapeV5._Windows then
-                        for _, w in pairs(VapeV5._Windows) do
-                            if type(w.Toggle) == "function" then
-                                w:Toggle()
-                                break
-                            end
-                        end
-                    end
-                end)
             end
             return
         end
-        
-        -- Toggle módulos
+
+        -- Toggle módulos por keybind
         if VapeV5._modules then
             for _, module in pairs(VapeV5._modules) do
-                if module.Bind and checkKeybind(module.Bind, keyName) then
+                if module.Bind and #module.Bind > 0 and checkKeybind(module.Bind, keyName) then
                     local toggleSuccess = pcall(function()
                         module:Toggle()
                     end)
-                    
-                    if toggleSuccess 
-                       and VapeV5.Settings 
-                       and VapeV5.Settings.General 
-                       and VapeV5.Settings.General.Notifications 
-                    then
+
+                    -- Notificação de toggle
+                    if toggleSuccess and VapeV5.Settings.General.Notifications then
                         pcall(function()
                             VapeV5.Notify(
                                 "Module Toggled",
@@ -3515,25 +3480,25 @@ end
             end
         end
     end)
-    
-    -- Input released handler
+
+    -- Input released handler (tecla solta)
     local inputEndConnection = Services.UserInputService.InputEnded:Connect(function(input)
         if not input.KeyCode or input.KeyCode == Enum.KeyCode.Unknown then
             return
         end
-        
+
         local keyName = input.KeyCode.Name
-        -- Remove todas as instâncias da tecla (evita duplicatas)
+
+        -- Remove todas as instâncias da tecla
         for i = #heldKeys, 1, -1 do
             if heldKeys[i] == keyName then
                 table.remove(heldKeys, i)
             end
         end
     end)
-    
+
     table.insert(VapeV5._connections, inputConnection)
     table.insert(VapeV5._connections, inputEndConnection)
-    
     -- ═══════════════════════════════════════════════════════════════
     -- 🌈 SISTEMA RAINBOW (OTIMIZADO)
     -- ═══════════════════════════════════════════════════════════════
