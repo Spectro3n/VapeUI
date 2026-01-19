@@ -3410,13 +3410,25 @@ function VapeV5:CreateWindow(options)
     end
     
     -- ═══════════════════════════════════════════════════════════════
-    -- ⌨️ SISTEMA DE KEYBINDS
+    -- ⌨️ SISTEMA DE KEYBINDS (ROBUSTO)
     -- ═══════════════════════════════════════════════════════════════
     
     local heldKeys = {}
     
+    -- Normaliza keybind para sempre ser tabela
+    local function normalizeKeybind(keybind)
+        if type(keybind) ~= "table" then
+            return { tostring(keybind or "RightShift") }
+        end
+        return keybind
+    end
+    
+    -- Verifica combinação de teclas
     local function checkKeybind(keys, pressedKey)
-        if type(keys) ~= "table" or #keys == 0 then return false end
+        -- Normaliza antes de verificar
+        keys = normalizeKeybind(keys)
+        
+        if #keys == 0 then return false end
         
         if table.find(keys, pressedKey) then
             for _, key in ipairs(keys) do
@@ -3434,43 +3446,87 @@ function VapeV5:CreateWindow(options)
     local inputConnection = Services.UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
-        if input.KeyCode ~= Enum.KeyCode.Unknown then
-            table.insert(heldKeys, input.KeyCode.Name)
-            
-            -- Verificar se está bindando
-            if VapeV5._bindingTarget then
+        -- Só processa teclas válidas
+        if not input.KeyCode or input.KeyCode == Enum.KeyCode.Unknown then
+            return
+        end
+        
+        local keyName = input.KeyCode.Name
+        table.insert(heldKeys, keyName)
+        
+        -- Verificar se está bindando
+        if VapeV5._bindingTarget then
+            pcall(function()
                 VapeV5._bindingTarget:StopListening(input.KeyCode)
-                return
+            end)
+            return
+        end
+        
+        -- Toggle GUI
+        if VapeV5.Settings and checkKeybind(VapeV5.Settings.Keybind, keyName) then
+            if windowAPI and type(windowAPI.Toggle) == "function" then
+                local success, err = pcall(function()
+                    windowAPI:Toggle()
+                end)
+                if not success then
+                    warn("[VapeV5] Toggle error:", err)
+                end
+            else
+                -- Fallback: tenta Windows registrados
+                pcall(function()
+                    if VapeV5._Windows then
+                        for _, w in pairs(VapeV5._Windows) do
+                            if type(w.Toggle) == "function" then
+                                w:Toggle()
+                                break
+                            end
+                        end
+                    end
+                end)
             end
-            
-            -- Toggle GUI
-            if checkKeybind(VapeV5.Settings.Keybind, input.KeyCode.Name) then
-                windowAPI:Toggle()
-            end
-            
-            -- Toggle módulos
+            return
+        end
+        
+        -- Toggle módulos
+        if VapeV5._modules then
             for _, module in pairs(VapeV5._modules) do
-                if checkKeybind(module.Bind, input.KeyCode.Name) then
-                    module:Toggle()
+                if module.Bind and checkKeybind(module.Bind, keyName) then
+                    local toggleSuccess = pcall(function()
+                        module:Toggle()
+                    end)
                     
-                    if VapeV5.Settings.General.Notifications then
-                        VapeV5.Notify(
-                            "Module Toggled",
-                            module.Name .. " " .. (module.Enabled and "<font color='#5AFF5A'>Enabled</font>" or "<font color='#FF5A5A'>Disabled</font>"),
-                            1.5,
-                            module.Enabled and "Success" or "Error"
-                        )
+                    if toggleSuccess 
+                       and VapeV5.Settings 
+                       and VapeV5.Settings.General 
+                       and VapeV5.Settings.General.Notifications 
+                    then
+                        pcall(function()
+                            VapeV5.Notify(
+                                "Module Toggled",
+                                module.Name .. " " .. (module.Enabled 
+                                    and "<font color='#5AFF5A'>Enabled</font>" 
+                                    or "<font color='#FF5A5A'>Disabled</font>"),
+                                1.5,
+                                module.Enabled and "Success" or "Error"
+                            )
+                        end)
                     end
                 end
             end
         end
     end)
     
+    -- Input released handler
     local inputEndConnection = Services.UserInputService.InputEnded:Connect(function(input)
-        if input.KeyCode ~= Enum.KeyCode.Unknown then
-            local idx = table.find(heldKeys, input.KeyCode.Name)
-            if idx then
-                table.remove(heldKeys, idx)
+        if not input.KeyCode or input.KeyCode == Enum.KeyCode.Unknown then
+            return
+        end
+        
+        local keyName = input.KeyCode.Name
+        -- Remove todas as instâncias da tecla (evita duplicatas)
+        for i = #heldKeys, 1, -1 do
+            if heldKeys[i] == keyName then
+                table.remove(heldKeys, i)
             end
         end
     end)
